@@ -5,7 +5,12 @@
 
 #include "IOCPServer.h"
 #include "Packet.h"
-constexpr uint16_t PKT_ECHO = 0;
+constexpr uint16_t PKT_ECHO        = 0x0000;
+
+constexpr uint16_t PKT_CS_MOVE     = 0x0201;
+constexpr uint16_t PKT_SC_MOVE     = 0x0202;
+constexpr uint16_t PKT_SC_SPAWN    = 0x0203;
+constexpr uint16_t PKT_SC_DESPAWN  = 0x0204;
 
 class PacketProc
 {

@@ -33,9 +33,16 @@ bool GameServer::Start(std::optional<std::string_view> openIp, uint16_t port,
 		return false;
 
 	//패킷 등록(여기서 핸들러는 세션id와 패킷을 인자로 받아 해당 패킷에 대응하는 함수를 call한다.
-	_packetProc.Register(PKT_ECHO, [this](SessionID sessionID, Packet* packet) 
+	_packetProc.Register(PKT_ECHO, [this](SessionID sessionID, Packet* packet)
 	{
 		SendPacket(sessionID, packet);
+	});
+
+	_packetProc.Register(PKT_CS_MOVE, [this](SessionID sessionID, Packet* packet)
+	{
+		int32_t x = 0, y = 0;
+		*packet >> x >> y;
+		EnqueueFrameTask({ FrameTaskType::playerMove, sessionID, x, y });
 	});
 
 	_isGameRunning.store(true);
@@ -208,11 +215,53 @@ void GameServer::ProcessFrameTask(const FrameTask& task)
 	switch (task.type)
 	{
 	case FrameTaskType::clientJoin:
+	{
+		for (auto& [id, player] : _players)
+		{
+			Packet* p = _packetPool.Alloc();
+			p->Clear();
+			p->SetType(PKT_SC_SPAWN);
+			*p << id << player->posX << player->poxY;
+			SendPacket(task.sessionID, p);
+			_packetPool.Free(p);
+		}
 		_players[task.sessionID] = std::make_unique<Player>(task.sessionID);
+		{
+			Packet* p = _packetPool.Alloc();
+			p->Clear();
+			p->SetType(PKT_SC_SPAWN);
+			*p << task.sessionID << static_cast<int32_t>(0) << static_cast<int32_t>(0);
+			BroadcastExcept(task.sessionID, p);
+			_packetPool.Free(p);
+		}
 		break;
+	}
 	case FrameTaskType::clientLeave:
+	{
 		_players.erase(task.sessionID);
+		Packet* p = _packetPool.Alloc();
+		p->Clear();
+		p->SetType(PKT_SC_DESPAWN);
+		*p << task.sessionID;
+		BroadcastAll(p);
+		_packetPool.Free(p);
 		break;
+	}
+	case FrameTaskType::playerMove:
+	{
+		auto it = _players.find(task.sessionID);
+		if (it == _players.end())
+			break;
+		it->second->posX  = task.x;
+		it->second->poxY  = task.y;
+		Packet* p = _packetPool.Alloc();
+		p->Clear();
+		p->SetType(PKT_SC_MOVE);
+		*p << task.sessionID << task.x << task.y;
+		BroadcastExcept(task.sessionID, p);
+		_packetPool.Free(p);
+		break;
+	}
 	}
 }
 

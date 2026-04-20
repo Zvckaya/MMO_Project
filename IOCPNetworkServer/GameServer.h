@@ -34,12 +34,14 @@ public:
     void OnRecv(SessionID sessionID, Packet* packet) override;
 
 private:
-    enum class FrameTaskType { clientJoin, clientLeave };
+    enum class FrameTaskType { clientJoin, clientLeave, playerMove };
 
     struct FrameTask
     {
         FrameTaskType type;
         SessionID     sessionID;
+        int32_t       x = 0;
+        int32_t       y = 0;
     };
 
     void BroadcastAll(Packet* packet);

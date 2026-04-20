@@ -6,7 +6,7 @@
 class Packet
 {
 public:
-    Packet() : _readPos(sizeof(uint16_t)), _writePos(sizeof(uint16_t))
+    Packet() : _readPos(sizeof(uint16_t) * 2), _writePos(sizeof(uint16_t) * 2)
     {
         memset(_buffer, 0, sizeof(_buffer));
     }
@@ -14,9 +14,13 @@ public:
 
     void Clear()
     {
-        _readPos  = sizeof(uint16_t);
-        _writePos = sizeof(uint16_t);
+        memset(_buffer, 0, sizeof(uint16_t) * 2);
+        _readPos  = sizeof(uint16_t) * 2;
+        _writePos = sizeof(uint16_t) * 2;
     }
+
+    void     SetType(uint16_t type) { memcpy(_buffer, &type, sizeof(uint16_t)); }
+    uint16_t GetType()        const { uint16_t t; memcpy(&t, _buffer, sizeof(uint16_t)); return t; }
 
     int   GetBufferSize()        const { return MAXPAYLOAD; }
     int   GetDataSize()          const { return _writePos; }
@@ -55,8 +59,8 @@ public:
     }
     void EncodeHeader()
     {
-        uint16_t payloadSize = static_cast<uint16_t>(_writePos - sizeof(uint16_t));
-        memcpy(_buffer, &payloadSize, sizeof(uint16_t));
+        uint16_t payloadSize = static_cast<uint16_t>(_writePos - sizeof(uint16_t) * 2);
+        memcpy(_buffer + sizeof(uint16_t), &payloadSize, sizeof(uint16_t));
     }
 
     Packet& operator<<(bool     value) { PutData(reinterpret_cast<const char*>(&value), sizeof(value)); return *this; }

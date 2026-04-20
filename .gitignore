@@ -361,3 +361,8 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# Claude / AI configuration
+CLAUDE.md
+AGENTS.md
+.claude/

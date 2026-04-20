@@ -150,33 +150,39 @@ void IOCPServer::CreateWorkerThread() //워커 io 스레드 생성
 			RingBuffer& recvBuffer = session->GetRecvBuffer();
 			recvBuffer.MoveRear(cbTransferredBytes); //받은 bytes만큼 rear증가 -> atomic함 
 
+			constexpr int headerSize = static_cast<int>(sizeof(uint16_t) * 2);
 			while (true)
 			{
-				if (recvBuffer.GetUseSize() < static_cast<int>(sizeof(uint16_t))) //최소 헤더만큼 있는가 
+				if (recvBuffer.GetUseSize() < headerSize)
 					break;
 
+				char headerBuf[sizeof(uint16_t) * 2];
+				recvBuffer.Peek(headerBuf, headerSize);
+				uint16_t pktType     = 0;
 				uint16_t payloadSize = 0;
-				recvBuffer.Peek(reinterpret_cast<char*>(&payloadSize), sizeof(uint16_t)); //헤더검사 
+				memcpy(&pktType,     headerBuf,                    sizeof(uint16_t));
+				memcpy(&payloadSize, headerBuf + sizeof(uint16_t), sizeof(uint16_t));
 
-				if (recvBuffer.GetUseSize() < static_cast<int>(sizeof(uint16_t)) + payloadSize)
+				if (recvBuffer.GetUseSize() < headerSize + static_cast<int>(payloadSize))
 					break;
 
 				Packet* packet = _packetPool.Alloc();
 				packet->Clear();
-				recvBuffer.MoveFront(sizeof(uint16_t));
+				recvBuffer.MoveFront(headerSize);
 
 				int directSize = recvBuffer.DirectDequeueSize();
 				if (payloadSize <= directSize)
 				{
 					packet->PutData(recvBuffer.GetFrontBufferPtr(), payloadSize);
 				}
-				else //랩어라운드시 
+				else //랩어라운드시
 				{
 					packet->PutData(recvBuffer.GetFrontBufferPtr(), directSize);
 					packet->PutData(recvBuffer.GetBufferStartPtr(), payloadSize - directSize);
 				}
 
 				recvBuffer.MoveFront(payloadSize);
+				packet->SetType(pktType);
 
 				SessionID sessionID = session->GetSessionID();
 				session->AddContentRef(); //job을 꺼낼 동안은 사라지지 않게 ioCount를 올려줘야한다.
