@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>IOCPNetworkServer Architecture</title>
+<style>
+* { margin:0; padding:0; }
+body { background:#06090f; display:flex; align-items:center; justify-content:center; min-height:100vh; }
+canvas { display:block; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1300" height="820"></canvas>
+<script>
+const cv = document.getElementById('c');
+const W = 1300, H = 820;
+cv.width = W; cv.height = H;
+const g = cv.getContext('2d');
+
+// ── Isometric projection ──────────────────────────────
+const S   = 44;
+const C30 = Math.sqrt(3) / 2;
+const OX  = 290, OY = 370;
+
+function iso(x, y, z) {
+  return [
+    (x - y) * S * C30 + OX,
+    (x + y) * S * 0.5 - z * S + OY
+  ];
+}
+
+// Draw filled polygon
+function poly(pts, fill, stroke, sw) {
+  g.beginPath();
+  g.moveTo(...pts[0]);
+  pts.slice(1).forEach(p => g.lineTo(...p));
+  g.closePath();
+  g.fillStyle = fill;
+  g.fill();
+  if (stroke) { g.strokeStyle = stroke; g.lineWidth = sw||1.2; g.stroke(); }
+}
+
+// Draw isometric box — visible faces: top, front(y=by), right(x=bx+w)
+function box(bx, by, bz, w, d, h, ct, cf, cr, eg) {
+  const e = eg || 'rgba(255,255,255,0.18)';
+  // right face (x = bx+w)
+  poly([iso(bx+w,by,bz), iso(bx+w,by+d,bz), iso(bx+w,by+d,bz+h), iso(bx+w,by,bz+h)], cr, e);
+  // front face (y = by)
+  poly([iso(bx,by,bz), iso(bx+w,by,bz), iso(bx+w,by,bz+h), iso(bx,by,bz+h)], cf, e);
+  // top face
+  poly([iso(bx,by,bz+h), iso(bx+w,by,bz+h), iso(bx+w,by+d,bz+h), iso(bx,by+d,bz+h)], ct, e);
+}
+
+// Glow edge on top face
+function glowTop(bx, by, bz, w, d, col) {
+  const pts = [iso(bx,by,bz), iso(bx+w,by,bz), iso(bx+w,by+d,bz), iso(bx,by+d,bz)];
+  g.save();
+  g.beginPath();
+  g.moveTo(...pts[0]); pts.slice(1).forEach(p => g.lineTo(...p));
+  g.closePath();
+  g.strokeStyle = col;
+  g.lineWidth = 2.5;
+  g.shadowColor = col;
+  g.shadowBlur = 18;
+  g.stroke();
+  g.restore();
+}
+
+// Text centered at iso point
+function txt(x, y, z, str, col, size, bold) {
+  const [sx, sy] = iso(x, y, z);
+  g.save();
+  g.fillStyle = col;
+  g.font = `${bold?'700':'500'} ${size}px 'Segoe UI', sans-serif`;
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText(str, sx, sy);
+  g.restore();
+}
+
+// Arrow
+function arrow(x1,y1,x2,y2,col,dash) {
+  const dx=x2-x1, dy=y2-y1, a=Math.atan2(dy,dx);
+  g.save();
+  g.strokeStyle=col; g.lineWidth=2;
+  g.shadowColor=col; g.shadowBlur=8;
+  if (dash) g.setLineDash([7,5]);
+  g.beginPath(); g.moveTo(x1,y1); g.lineTo(x2,y2); g.stroke();
+  g.setLineDash([]);
+  g.shadowBlur=0;
+  g.beginPath();
+  g.moveTo(x2,y2);
+  g.lineTo(x2-12*Math.cos(a-0.4), y2-12*Math.sin(a-0.4));
+  g.lineTo(x2-12*Math.cos(a+0.4), y2-12*Math.sin(a+0.4));
+  g.closePath(); g.fillStyle=col; g.fill();
+  g.restore();
+}
+
+// ══════════════════════════════════════════════════════
+//  DRAW
+// ══════════════════════════════════════════════════════
+
+// BG
+g.fillStyle = '#06090f';
+g.fillRect(0, 0, W, H);
+
+// Dot grid
+g.fillStyle = 'rgba(255,255,255,0.022)';
+for (let x=0;x<W;x+=30) for (let y=0;y<H;y+=30) g.fillRect(x,y,1.5,1.5);
+
+// ── Title ──
+g.textAlign = 'center';
+g.fillStyle = '#8b949e';
+g.font = '300 20px Segoe UI';
+g.fillText('IOCPNetworkServer', W/2, 38);
+g.fillStyle = '#ffffff';
+g.font = '700 20px Segoe UI';
+g.fillText('Thread Architecture', W/2, 62);
+
+// ── Box dimensions ──
+const BW = 4.2, BD = 3.0, BH = 5.2;
+const IO = [0, 0];
+const IM = [5.8, 0];
+const FR = [11.6, 0];
+
+// ── DRAW ORDER: back→front (painter's algorithm) ──────
+// 1. Accept Thread bar — drawn FIRST so boxes paint over it
+box(-0.3, -0.5, BH+0.4, FR[0]+BW+0.9, BD, 0.7,
+  '#1e1b4b','#16134a','#100e38',
+  'rgba(129,140,248,0.4)'
+);
+glowTop(-0.3,-0.5,BH+1.1, FR[0]+BW+0.9, BD, '#818cf8');
+
+// 2. Frame Thread (highest x = furthest from viewer)
+box(FR[0],FR[1],0, BW,BD,BH,
+  '#4a1e00','#3c1700','#2a1000',
+  'rgba(245,158,11,0.35)'
+);
+glowTop(FR[0],FR[1],BH, BW,BD, '#f59e0b');
+box(FR[0]+0.3, FR[1], 0.4, 3.4, 0.5, 3.5,
+  '#b45309','#92400e','#78350f', 'rgba(251,191,36,0.3)');
+const [flx,fly] = iso(FR[0]+BW/2, FR[1]+BD/2, BH);
+g.fillStyle='#fcd34d'; g.font='700 14px Segoe UI'; g.textAlign='center'; g.textBaseline='middle';
+g.fillText('FRAME THREAD', flx, fly-10);
+g.fillStyle='#d97706'; g.font='500 10px Consolas';
+g.fillText('60 fps  ·  steady_clock', flx, fly+8);
+g.fillText('FrameTask  ·  _players', flx, fly+23);
+
+// 3. Immediate Threads
+box(IM[0],IM[1],0, BW,BD,BH,
+  '#0d3d1a','#0a2d14','#061c0b',
+  'rgba(34,197,94,0.35)'
+);
+glowTop(IM[0],IM[1],BH, BW,BD, '#22c55e');
+[[0.3,0,0.4],[0.3,0,1.7],[0.3,0,3.0],[0.3,0,4.3]].forEach(([px,py,pz]) => {
+  box(IM[0]+px, IM[1]+py, pz, 3.4, 0.5, 0.8,
+    '#16a34a','#15803d','#166534', 'rgba(74,222,128,0.3)');
+});
+const [mlx,mly] = iso(IM[0]+BW/2, IM[1]+BD/2, BH);
+g.fillStyle='#86efac'; g.font='700 14px Segoe UI'; g.textAlign='center'; g.textBaseline='middle';
+g.fillText('IMMEDIATE', mlx, mly-10);
+g.fillStyle='#16a34a'; g.font='500 10px Consolas';
+g.fillText('Threads ×6  ·  64ms', mlx, mly+8);
+g.fillText('GlobalQueue  ·  JobQueue', mlx, mly+23);
+
+// 4. IO Worker (lowest x = closest to viewer, drawn last)
+box(IO[0],IO[1],0, BW,BD,BH,
+  '#1a3461','#12264d','#0a1a36',
+  'rgba(59,130,246,0.35)'
+);
+glowTop(IO[0],IO[1],BH, BW,BD, '#3b82f6');
+[[0.3,0,0.4],[0.3,0,1.7],[0.3,0,3.0],[0.3,0,4.3]].forEach(([px,py,pz]) => {
+  box(IO[0]+px, IO[1]+py, pz, 3.4, 0.5, 0.8,
+    '#2563eb','#1d4ed8','#1e3a8a', 'rgba(96,165,250,0.3)');
+});
+const [ilx,ily] = iso(IO[0]+BW/2, IO[1]+BD/2, BH);
+g.fillStyle='#93c5fd'; g.font='700 14px Segoe UI'; g.textAlign='center'; g.textBaseline='middle';
+g.fillText('IO WORKER', ilx, ily-10);
+g.fillStyle='#3b82f6'; g.font='500 10px Consolas';
+g.fillText('Worker Threads ×N', ilx, ily+8);
+g.fillText('GQCS  ·  recv  ·  send', ilx, ily+23);
+
+// ── Accept Thread label ──────────────────────────────
+const [alx,aly] = iso(-0.3 + (FR[0]+BW+0.9)/2, -0.5+BD/2, BH+1.1);
+g.fillStyle='#a5b4fc'; g.font='700 13px Segoe UI'; g.textAlign='center'; g.textBaseline='middle';
+g.fillText('ACCEPT THREAD', alx, aly-8);
+g.fillStyle='#6366f1'; g.font='500 10px Consolas';
+g.fillText('std::jthread  ·  SessionID  ·  ioCount++  ·  OnClientJoin', alx, aly+9);
+
+// ── ARROWS ────────────────────────────────────────────
+
+// Accept → IO (down into IO box)
+{
+  const [ax,ay] = iso(IO[0]+BW/2-0.3, IO[1], BH+1.1);
+  const [bx,by] = iso(IO[0]+BW/2, IO[1], BH+0.1);
+  arrow(ax,ay+6, bx,by-4, '#818cf8', true);
+}
+// Accept → IM
+{
+  const [ax,ay] = iso(IM[0]+BW/2, IM[1], BH+1.1);
+  const [bx,by] = iso(IM[0]+BW/2, IM[1], BH+0.1);
+  arrow(ax,ay+6, bx,by-4, '#818cf8', true);
+}
+// Accept → FR
+{
+  const [ax,ay] = iso(FR[0]+BW/2+0.4, FR[1], BH+1.1);
+  const [bx,by] = iso(FR[0]+BW/2, FR[1], BH+0.1);
+  arrow(ax,ay+6, bx,by-4, '#818cf8', true);
+}
+
+// IO → Immediate (OnRecv)
+{
+  const [ax,ay] = iso(IO[0]+BW, IO[1]+0.5, BH*0.5);
+  const [bx,by] = iso(IM[0],    IM[1]+0.5, BH*0.5);
+  arrow(ax,ay, bx,by, '#60a5fa', false);
+  const [lx,ly] = iso(IO[0]+BW+0.5, IO[1]+0.3, BH*0.5+0.8);
+  g.fillStyle='#93c5fd'; g.font='600 10px Segoe UI'; g.textAlign='center'; g.textBaseline='middle';
+  g.fillText('OnRecv', lx, ly);
+}
+
+// Immediate → Frame (OnClientJoin)
+{
+  const [ax,ay] = iso(IM[0]+BW, IM[1]+0.5, BH*0.5);
+  const [bx,by] = iso(FR[0],    FR[1]+0.5, BH*0.5);
+  arrow(ax,ay, bx,by, '#4ade80', false);
+  const [lx,ly] = iso(IM[0]+BW+0.5, IM[1]+0.3, BH*0.5+0.8);
+  g.fillStyle='#86efac'; g.font='600 10px Segoe UI'; g.textAlign='center'; g.textBaseline='middle';
+  g.fillText('OnClientJoin', lx, ly);
+}
+
+// Frame → IO (SendPacket return)
+{
+  const [ax,ay] = iso(FR[0]+0.3, FR[1]+BD, BH*0.3);
+  const [bx,by] = iso(IO[0]+BW-0.3, IO[1]+BD, BH*0.3);
+  arrow(ax,ay, bx,by, '#f59e0b', true);
+  const [lx,ly] = iso((IO[0]+FR[0]+BW)*0.5, IO[1]+BD+0.3, BH*0.3+0.8);
+  g.fillStyle='#fbbf24'; g.font='600 10px Segoe UI'; g.textAlign='center'; g.textBaseline='middle';
+  g.fillText('SendPacket', lx, ly);
+}
+
+// ── Performance badge ──────────────────────────────────
+g.save();
+g.fillStyle = 'rgba(255,255,255,0.04)';
+g.beginPath(); g.roundRect(W-210,H-82,188,60,10); g.fill();
+g.strokeStyle = 'rgba(255,255,255,0.07)'; g.lineWidth=1; g.stroke();
+g.textBaseline='middle';
+g.fillStyle='#484f58'; g.font='10px Segoe UI'; g.textAlign='left';
+g.fillText('RELEASE TPS', W-195, H-60);
+g.fillStyle='#58a6ff'; g.font='bold 20px Consolas';
+g.fillText('737,838', W-195, H-38);
+g.fillStyle='#484f58'; g.font='10px Segoe UI';
+g.fillText('ERRORS', W-70, H-60);
+g.fillStyle='#3fb950'; g.font='bold 20px Consolas';
+g.fillText('0', W-70, H-38);
+g.restore();
+
+</script>
+</body>
+</html>
