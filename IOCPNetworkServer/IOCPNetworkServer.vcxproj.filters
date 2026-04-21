@@ -36,7 +36,7 @@
     <ClCompile Include="JobQueue.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
-    <ClCompile Include="PacketProc.cpp">
+    <ClCompile Include="PacketHandler.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
   </ItemGroup>
@@ -71,10 +71,10 @@
     <ClInclude Include="JobQueue.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
-    <ClInclude Include="PacketProc.h">
+    <ClInclude Include="MemoryPool.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
-    <ClInclude Include="MemoryPool.h">
+    <ClInclude Include="PacketTypes.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
   </ItemGroup>

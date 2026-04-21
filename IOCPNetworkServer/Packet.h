@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include <cstdint>
 #include <cstring>
+#include <string>
 #include "ServerConfig.h"
 
 class Packet
@@ -86,6 +87,34 @@ public:
     Packet& operator>>(uint64_t& value) { GetData(reinterpret_cast<char*>(&value), sizeof(value)); return *this; }
     Packet& operator>>(float&    value) { GetData(reinterpret_cast<char*>(&value), sizeof(value)); return *this; }
     Packet& operator>>(double&   value) { GetData(reinterpret_cast<char*>(&value), sizeof(value)); return *this; }
+
+    Packet& operator<<(const std::string& value)
+    {
+        uint16_t len = static_cast<uint16_t>(value.size());
+        PutData(reinterpret_cast<const char*>(&len), sizeof(uint16_t));
+        PutData(value.c_str(), static_cast<int>(len));
+        return *this;
+    }
+    Packet& operator>>(std::string& value)
+    {
+        uint16_t len = 0;
+        GetData(reinterpret_cast<char*>(&len), sizeof(uint16_t));
+        value.resize(len);
+        GetData(value.data(), static_cast<int>(len));
+        return *this;
+    }
+
+    template<typename T>
+    bool ReadStruct(T& out)
+    {
+        return GetData(reinterpret_cast<char*>(&out), static_cast<int>(sizeof(T))) == static_cast<int>(sizeof(T));
+    }
+
+    template<typename T>
+    bool WriteStruct(const T& in)
+    {
+        return PutData(reinterpret_cast<const char*>(&in), static_cast<int>(sizeof(T))) == static_cast<int>(sizeof(T));
+    }
 
 private:
     char _buffer[MAXPAYLOAD];

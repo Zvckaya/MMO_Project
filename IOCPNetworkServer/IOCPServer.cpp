@@ -1,5 +1,38 @@
 ﻿#include "IOCPServer.h"
+#include "Logger.h"
+#include "PacketTypes.h"
 #include <iostream>
+
+static const wchar_t* PacketTypeName(uint16_t type)
+{
+	switch (type)
+	{
+	case PKT_ECHO:                 return L"ECHO";
+	case PKT_CS_LOGIN_AUTH:        return L"CS_LOGIN_AUTH";
+	case PKT_SC_LOGIN_AUTH_RESULT: return L"SC_LOGIN_AUTH_RESULT";
+	case PKT_CS_MOVE:              return L"CS_MOVE";
+	case PKT_SC_MOVE:              return L"SC_MOVE";
+	case PKT_SC_SPAWN:             return L"SC_SPAWN";
+	case PKT_SC_DESPAWN:           return L"SC_DESPAWN";
+	case PKT_SC_MOVE_CORRECT:      return L"SC_MOVE_CORRECT";
+	case PKT_SC_WORLD_ENTER:       return L"SC_WORLD_ENTER";
+	case PKT_CS_STOP:              return L"CS_STOP";
+	case PKT_CS_ATTACK:            return L"CS_ATTACK";
+	case PKT_SC_ATTACK:            return L"SC_ATTACK";
+	case PKT_CS_SKILL:             return L"CS_SKILL";
+	case PKT_SC_SKILL:             return L"SC_SKILL";
+	case PKT_CS_ITEM_PICKUP:       return L"CS_ITEM_PICKUP";
+	case PKT_CS_ITEM_DROP:         return L"CS_ITEM_DROP";
+	case PKT_SC_ITEM_APPEAR:       return L"SC_ITEM_APPEAR";
+	case PKT_SC_ITEM_DISAPPEAR:    return L"SC_ITEM_DISAPPEAR";
+	case PKT_SC_INVENTORY_UPD:     return L"SC_INVENTORY_UPD";
+	case PKT_SC_NPC_SPAWN:         return L"SC_NPC_SPAWN";
+	case PKT_SC_NPC_DESPAWN:       return L"SC_NPC_DESPAWN";
+	case PKT_SC_NPC_MOVE:          return L"SC_NPC_MOVE";
+	case PKT_SC_NPC_ATTACK:        return L"SC_NPC_ATTACK";
+	default:                       return L"UNKNOWN";
+	}
+}
 
 IOCPServer::~IOCPServer()
 {
@@ -185,6 +218,9 @@ void IOCPServer::CreateWorkerThread() //워커 io 스레드 생성
 				packet->SetType(pktType);
 
 				SessionID sessionID = session->GetSessionID();
+				Log(L"NET", Logger::Level::DEBUG,
+					L"[RECV] sessionID=%llu  type=0x%04X(%s)  payload=%d",
+					sessionID, pktType, PacketTypeName(pktType), payloadSize);
 				session->AddContentRef(); //job을 꺼낼 동안은 사라지지 않게 ioCount를 올려줘야한다.
 				OnRecv(sessionID, packet); //컨텐츠로 던지기 
 			}
@@ -254,6 +290,9 @@ void IOCPServer::CreateAcceptThread(std::stop_token stopToken)
 		uint64_t sessionID = (generation << 16) | slotIndex; // 48bit generation | 16비트 인덱스 
 		session.SetSocket(clientSock);
 		session.SetSessionID(sessionID);
+		Log(L"NET", Logger::Level::SYSTEM,
+			L"[CONNECT] %S:%d  sessionID=%llu  slot=%d",
+			clientIp, clientPort, sessionID, slotIndex);
 
 		session.SetEventHandler({ //람다를 이용하여 세션에 대하 컨텐츠에서 수행할 이벤드 핸들러를등록 한다 
 			.onReturnIndex     = [this, slotIndex]() { //인덱스 반납시 
