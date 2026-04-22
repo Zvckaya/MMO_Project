@@ -18,6 +18,9 @@ constexpr uint16_t PKT_SC_DESPAWN            = 0x0204;
 constexpr uint16_t PKT_SC_MOVE_CORRECT       = 0x0205;
 constexpr uint16_t PKT_SC_WORLD_ENTER        = 0x0206;
 constexpr uint16_t PKT_CS_STOP               = 0x0207;
+constexpr uint16_t PKT_SC_MAP_INFO           = 0x0209;
+constexpr uint16_t PKT_CS_MAP_CHANGE_REQ     = 0x020A;
+constexpr uint16_t PKT_SC_MAP_CHANGE         = 0x020B;
 
 constexpr uint16_t PKT_CS_ATTACK             = 0x0301;
 constexpr uint16_t PKT_SC_ATTACK             = 0x0302;
@@ -30,6 +33,7 @@ constexpr uint16_t PKT_CS_ITEM_DROP          = 0x0502;
 constexpr uint16_t PKT_SC_ITEM_APPEAR        = 0x0503;
 constexpr uint16_t PKT_SC_ITEM_DISAPPEAR     = 0x0504;
 constexpr uint16_t PKT_SC_INVENTORY_UPD      = 0x0505;
+constexpr uint16_t PKT_CS_ITEM_MOVE          = 0x0507;
 
 constexpr uint16_t PKT_SC_NPC_SPAWN          = 0x0601;
 constexpr uint16_t PKT_SC_NPC_DESPAWN        = 0x0602;
@@ -84,6 +88,16 @@ struct SC_MOVE_CORRECT      { float curX; float curY; };
 // [0x0207] CS_STOP
 struct CS_STOP              { float curX; float curY; };
 
+// [0x0209] SC_MAP_INFO
+struct SC_MAP_INFO          { uint32_t mapID; };
+
+// [0x020A] CS_MAP_CHANGE_REQ
+struct CS_MAP_CHANGE_REQ    { uint32_t targetMapID; };
+
+// [0x020B] SC_MAP_CHANGE
+// result: 0=성공 1=존재하지 않는 맵 2=이미 같은 맵
+struct SC_MAP_CHANGE        { uint32_t mapID; uint8_t result; };
+
 // [0x0301] CS_ATTACK
 struct CS_ATTACK            { uint64_t targetID; };
 
@@ -104,7 +118,10 @@ struct CS_ITEM_PICKUP       { uint64_t itemUID; };
 struct CS_ITEM_DROP         { uint16_t slotIndex; };
 
 // [0x0503] SC_ITEM_APPEAR
-struct SC_ITEM_APPEAR       { uint64_t itemUID; uint16_t itemID; float x; float y; };
+struct SC_ITEM_APPEAR       { uint64_t itemUID; uint16_t itemID; float x; float y; int32_t count; };
+
+// [0x0507] CS_ITEM_MOVE
+struct CS_ITEM_MOVE         { uint16_t fromSlot; uint16_t toSlot; };
 
 // [0x0504] SC_ITEM_DISAPPEAR
 struct SC_ITEM_DISAPPEAR    { uint64_t itemUID; };

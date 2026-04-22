@@ -18,6 +18,10 @@ static const wchar_t* PacketTypeName(uint16_t type)
 	case PKT_SC_MOVE_CORRECT:      return L"SC_MOVE_CORRECT";
 	case PKT_SC_WORLD_ENTER:       return L"SC_WORLD_ENTER";
 	case PKT_CS_STOP:              return L"CS_STOP";
+	case PKT_SC_MAP_INFO:          return L"SC_MAP_INFO";
+	case PKT_CS_MAP_CHANGE_REQ:    return L"CS_MAP_CHANGE_REQ";
+	case PKT_SC_MAP_CHANGE:        return L"SC_MAP_CHANGE";
+	case PKT_CS_ITEM_MOVE:         return L"CS_ITEM_MOVE";
 	case PKT_CS_ATTACK:            return L"CS_ATTACK";
 	case PKT_SC_ATTACK:            return L"SC_ATTACK";
 	case PKT_CS_SKILL:             return L"CS_SKILL";

@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "IOCPServer.h"
+#include "DBClient.h"
 #include "GameMap.h"
 #include "GlobalQueue.h"
 #include "JobQueue.h"
@@ -41,7 +42,8 @@ private:
         std::string displayName;
     };
 
-    enum class FrameTaskType { clientJoin, clientLeave, playerMove, playerAttack, playerSkill, playerAuth };
+    enum class FrameTaskType { clientJoin, clientLeave, playerMove, playerAttack, playerSkill, playerAuth, playerMapChange,
+                               itemSlotSwap, itemDrop, itemPickup };
 
     struct FrameTask
     {
@@ -53,7 +55,11 @@ private:
         float         curX  = 0.f, curY  = 0.f;
         float         destX = 0.f, destY = 0.f;
         uint16_t      skillID = 0;
-        MapID         mapID  = DEFAULT_MAP_ID;
+        MapID         mapID       = DEFAULT_MAP_ID;
+        MapID         targetMapID = DEFAULT_MAP_ID;
+        PlayerDBData  dbData;
+        uint16_t      fromSlot = 0;
+        uint16_t      toSlot   = 0;
     };
 
     void BroadcastAll(MapID mapID, Packet* packet);
@@ -81,14 +87,33 @@ private:
     void OnCS_Skill(SessionID sessionID, Packet* packet);
     void OnCS_ItemPickup(SessionID sessionID, Packet* packet);
     void OnCS_ItemDrop(SessionID sessionID, Packet* packet);
+    void OnCS_ItemMove(SessionID sessionID, Packet* packet);
+    void OnCS_MapChangeReq(SessionID sessionID, Packet* packet);
 
     void CreateAuthThread(std::stop_token stopToken);
     void ProcessAuthResult(SessionID sessionID, const struct AuthResult& auth);
+
+    struct DBRequest {
+        enum class Type { loadPlayer, savePlayer, saveInventory };
+        Type         type;
+        uint64_t     accountId = 0;
+        PlayerDBData saveData;
+        std::vector<InventorySlotData> inventoryData;
+        std::function<void(const PlayerDBData&)> onLoad;
+    };
+
+    void EnqueueDBRequest(DBRequest req);
+    void CreateDBThread(std::stop_token stopToken);
 
     std::mutex                  _authQueueMutex;
     std::condition_variable     _authQueueCv;
     std::queue<AuthRequest>     _authPendingQueue;
     std::jthread                _authThread;
+
+    std::mutex                  _dbQueueMutex;
+    std::condition_variable     _dbQueueCv;
+    std::queue<DBRequest>       _dbPendingQueue;
+    std::jthread                _dbThread;
 
     std::mutex            _frameTaskMutex;
     std::queue<FrameTask> _frameTaskQueue;
@@ -99,8 +124,9 @@ private:
     std::unordered_map<SessionID, std::shared_ptr<JobQueue>> _sessionJobQueues;
     std::shared_mutex                                      _authStatesMutex;
     std::unordered_map<SessionID, SessionAuthState>        _sessionAuthStates;
-    std::unordered_map<MapID, std::unique_ptr<GameMap>>    _maps;
-    std::unordered_map<SessionID, MapID>                   _sessionToMapID;
+    std::unordered_map<MapID, std::unique_ptr<GameMap>>         _maps;
+    std::unordered_map<SessionID, MapID>                        _sessionToMapID;
+    std::unordered_map<uint16_t, ItemData, std::hash<uint16_t>> _itemDataMap;
 
     std::atomic<bool> _isGameRunning = false;
 };

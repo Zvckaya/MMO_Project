@@ -28,6 +28,12 @@ void GameServer::HandlePacket(SessionID sessionID, Packet* packet)
     case PKT_CS_ITEM_DROP:
         OnCS_ItemDrop(sessionID, packet);
         break;
+    case PKT_CS_ITEM_MOVE:
+        OnCS_ItemMove(sessionID, packet);
+        break;
+    case PKT_CS_MAP_CHANGE_REQ:
+        OnCS_MapChangeReq(sessionID, packet);
+        break;
     default:
         break;
     }
@@ -112,11 +118,48 @@ void GameServer::OnCS_Skill(SessionID sessionID, Packet* packet)
 void GameServer::OnCS_ItemPickup(SessionID sessionID, Packet* packet)
 {
     CS_ITEM_PICKUP data;
-    packet->ReadStruct(data);
+    if (!packet->ReadStruct(data)) return;
+
+    EnqueueFrameTask({
+        .type      = FrameTaskType::itemPickup,
+        .sessionID = sessionID,
+        .targetID  = data.itemUID
+    });
 }
 
 void GameServer::OnCS_ItemDrop(SessionID sessionID, Packet* packet)
 {
     CS_ITEM_DROP data;
-    packet->ReadStruct(data);
+    if (!packet->ReadStruct(data)) return;
+
+    EnqueueFrameTask({
+        .type      = FrameTaskType::itemDrop,
+        .sessionID = sessionID,
+        .fromSlot  = data.slotIndex
+    });
+}
+
+void GameServer::OnCS_ItemMove(SessionID sessionID, Packet* packet)
+{
+    CS_ITEM_MOVE data;
+    if (!packet->ReadStruct(data)) return;
+
+    EnqueueFrameTask({
+        .type      = FrameTaskType::itemSlotSwap,
+        .sessionID = sessionID,
+        .fromSlot  = data.fromSlot,
+        .toSlot    = data.toSlot
+    });
+}
+
+void GameServer::OnCS_MapChangeReq(SessionID sessionID, Packet* packet)
+{
+    CS_MAP_CHANGE_REQ data;
+    if (!packet->ReadStruct(data)) return;
+
+    EnqueueFrameTask({
+        .type        = FrameTaskType::playerMapChange,
+        .sessionID   = sessionID,
+        .targetMapID = data.targetMapID
+    });
 }

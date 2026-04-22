@@ -1,8 +1,15 @@
 #pragma once
+#include <array>
 #include <cstdint>
 #include <string>
+#include "ServerConfig.h"
 
 using PlayerID = uint64_t;
+
+struct InventorySlot {
+    uint16_t itemID = 0;
+    int32_t  count  = 0;
+};
 
 class Player
 {
@@ -24,6 +31,7 @@ public:
     uint64_t lastMoveTime = 0;
     int32_t  hp    = 100;
     int32_t  maxHp = 100;
+    std::array<InventorySlot, MAX_INVENTORY_SLOTS> inventory{};
 
 private:
     PlayerID    _playerID;
