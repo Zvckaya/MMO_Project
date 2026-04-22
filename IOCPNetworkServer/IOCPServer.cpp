@@ -12,7 +12,8 @@ static const wchar_t* PacketTypeName(uint16_t type)
 	case PKT_SC_LOGIN_AUTH_RESULT: return L"SC_LOGIN_AUTH_RESULT";
 	case PKT_CS_MOVE:              return L"CS_MOVE";
 	case PKT_SC_MOVE:              return L"SC_MOVE";
-	case PKT_SC_SPAWN:             return L"SC_SPAWN";
+	case PKT_SC_CREATE_MY_CHARACTER:    return L"SC_CREATE_MY_CHARACTER";
+	case PKT_SC_CREATE_OTHER_CHARACTER: return L"SC_CREATE_OTHER_CHARACTER";
 	case PKT_SC_DESPAWN:           return L"SC_DESPAWN";
 	case PKT_SC_MOVE_CORRECT:      return L"SC_MOVE_CORRECT";
 	case PKT_SC_WORLD_ENTER:       return L"SC_WORLD_ENTER";

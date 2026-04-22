@@ -1,20 +1,33 @@
-﻿#include "GameServer.h"
+#include "GameServer.h"
 #include "AuthClient.h"
+#include "Logger.h"
 #include <chrono>
 #include <cmath>
 #include <Windows.h>
 
-void GameServer::BroadcastAll(Packet* packet) //모두에게 broadcast한다.
+void GameServer::BroadcastAll(MapID mapID, Packet* packet)
 {
-	for (auto& [id, player] : _players)
+	auto it = _maps.find(mapID);
+	if (it == _maps.end()) return;
+	for (auto& [id, player] : it->second->GetPlayers())
 		SendPacket(id, packet);
 }
 
-void GameServer::BroadcastExcept(SessionID excludeID, Packet* packet) //특정 세션을 제외하고 broadcast한다 
+void GameServer::BroadcastExcept(MapID mapID, SessionID excludeID, Packet* packet)
 {
-	for (auto& [id, player] : _players)
+	auto it = _maps.find(mapID);
+	if (it == _maps.end()) return;
+	for (auto& [id, player] : it->second->GetPlayers())
 		if (id != excludeID)
 			SendPacket(id, packet);
+}
+
+GameMap* GameServer::FindPlayerMap(SessionID sessionID)
+{
+	auto mapIt = _sessionToMapID.find(sessionID);
+	if (mapIt == _sessionToMapID.end()) return nullptr;
+	auto it = _maps.find(mapIt->second);
+	return it != _maps.end() ? it->second.get() : nullptr;
 }
 
 GameServer::~GameServer()
@@ -33,6 +46,8 @@ bool GameServer::Start(std::optional<std::string_view> openIp, uint16_t port,
 
 	if (!IOCPServer::Start(openIp, port, workerThreadCount, runningThreadCount, nagleOption, maxSessionCount))
 		return false;
+
+	_maps.emplace(DEFAULT_MAP_ID, std::make_unique<GameMap>(DEFAULT_MAP_ID));
 
 	_isGameRunning.store(true);
 
@@ -90,7 +105,8 @@ void GameServer::Stop()
 			_frameTaskQueue.pop();
 	}
 
-	_players.clear();
+	_maps.clear();
+	_sessionToMapID.clear();
 
 	IOCPServer::Stop();
 }
@@ -153,10 +169,11 @@ void GameServer::OnRecv(SessionID sessionID, Packet* packet)
 		jobQueue = it->second;
 	}
 
-	if (!jobQueue->isAuthenticated && packet->GetType() != PKT_CS_LOGIN_AUTH)
+	if (!jobQueue->isAuthenticated && packet->GetType() != PKT_CS_LOGIN_AUTH) //인증 패킷이 아니고, 인증 세션도 아니면 disconnect
 	{
 		_packetPool.Free(packet);
 		ReleaseContentRef(sessionID);
+		Disconnect(sessionID);
 		return;
 	}
 
@@ -314,22 +331,43 @@ void GameServer::ProcessFrameTask(const FrameTask& task)
 		break;
 	case FrameTaskType::playerAuth:
 	{
-		for (auto& [id, player] : _players)
+		auto mapIt = _maps.find(task.mapID);
+		if (mapIt == _maps.end()) break;
+		GameMap* map = mapIt->second.get();
+
+		auto newPlayerPtr = std::make_unique<Player>(task.sessionID, task.accountId, task.displayName);
+		Player* newPlayer = newPlayerPtr.get();
+		map->AddPlayer(task.sessionID, std::move(newPlayerPtr));
+		_sessionToMapID[task.sessionID] = task.mapID;
+
 		{
 			Packet* p = _packetPool.Alloc();
 			p->Clear();
-			p->SetType(PKT_SC_SPAWN);
-			p->WriteStruct(SC_SPAWN{ id, player->posX, player->posY, player->hp, player->maxHp });
+			p->SetType(PKT_SC_CREATE_MY_CHARACTER);
+			p->WriteStruct(SC_CREATE_MY_CHARACTER{ task.sessionID, 0.f, 0.f, newPlayer->hp, newPlayer->maxHp, newPlayer->speed, static_cast<uint16_t>(task.displayName.size()) });
+			p->PutData(task.displayName.c_str(), static_cast<int>(task.displayName.size()));
 			SendPacket(task.sessionID, p);
 			_packetPool.Free(p);
 		}
-		_players[task.sessionID] = std::make_unique<Player>(task.sessionID, task.accountId, task.displayName);
+		for (auto& [id, player] : map->GetPlayers())
+		{
+			if (id == task.sessionID) continue;
+			const std::string& name = player->GetDisplayName();
+			Packet* p = _packetPool.Alloc();
+			p->Clear();
+			p->SetType(PKT_SC_CREATE_OTHER_CHARACTER);
+			p->WriteStruct(SC_CREATE_OTHER_CHARACTER{ id, player->posX, player->posY, player->hp, player->maxHp, player->speed, static_cast<uint16_t>(name.size()) });
+			p->PutData(name.c_str(), static_cast<int>(name.size()));
+			SendPacket(task.sessionID, p);
+			_packetPool.Free(p);
+		}
 		{
 			Packet* p = _packetPool.Alloc();
 			p->Clear();
-			p->SetType(PKT_SC_SPAWN);
-			p->WriteStruct(SC_SPAWN{ task.sessionID, 0.f, 0.f, 100, 100 });
-			BroadcastExcept(task.sessionID, p);
+			p->SetType(PKT_SC_CREATE_OTHER_CHARACTER);
+			p->WriteStruct(SC_CREATE_OTHER_CHARACTER{ task.sessionID, 0.f, 0.f, newPlayer->hp, newPlayer->maxHp, newPlayer->speed, static_cast<uint16_t>(task.displayName.size()) });
+			p->PutData(task.displayName.c_str(), static_cast<int>(task.displayName.size()));
+			BroadcastExcept(task.mapID, task.sessionID, p);
 			_packetPool.Free(p);
 		}
 		{
@@ -343,25 +381,30 @@ void GameServer::ProcessFrameTask(const FrameTask& task)
 	}
 	case FrameTaskType::clientLeave:
 	{
-		_players.erase(task.sessionID);
-		Packet* p = _packetPool.Alloc();
-		p->Clear();
-		p->SetType(PKT_SC_DESPAWN);
-		p->WriteStruct(SC_DESPAWN{ task.sessionID });
-		BroadcastAll(p);
-		_packetPool.Free(p);
+		GameMap* map = FindPlayerMap(task.sessionID);
+		if (map)
+		{
+			map->RemovePlayer(task.sessionID);
+			Packet* p = _packetPool.Alloc();
+			p->Clear();
+			p->SetType(PKT_SC_DESPAWN);
+			p->WriteStruct(SC_DESPAWN{ task.sessionID });
+			BroadcastExcept(map->GetID(), task.sessionID, p);
+			_packetPool.Free(p);
+		}
+		_sessionToMapID.erase(task.sessionID);
 		break;
 	}
 	case FrameTaskType::playerMove:
 		break;
 	case FrameTaskType::playerAttack:
 	{
-		auto attackerIt = _players.find(task.sessionID);
-		auto targetIt   = _players.find(task.targetID);
-		if (attackerIt == _players.end() || targetIt == _players.end()) break;
+		GameMap* map = FindPlayerMap(task.sessionID);
+		if (!map) break;
 
-		Player* attacker = attackerIt->second.get();
-		Player* target   = targetIt->second.get();
+		Player* attacker = map->FindPlayer(task.sessionID);
+		Player* target   = map->FindPlayer(task.targetID);
+		if (!attacker || !target) break;
 
 		float dx = attacker->posX - target->posX;
 		float dy = attacker->posY - target->posY;
@@ -375,7 +418,7 @@ void GameServer::ProcessFrameTask(const FrameTask& task)
 		p->Clear();
 		p->SetType(PKT_SC_ATTACK);
 		p->WriteStruct(SC_ATTACK{ task.sessionID, task.targetID, damage, target->hp });
-		BroadcastAll(p);
+		BroadcastAll(map->GetID(), p);
 		_packetPool.Free(p);
 		break;
 	}
@@ -390,17 +433,22 @@ void GameServer::Update(int64_t deltaMs)
 		std::shared_lock lock(_jobQueuesMutex);
 		for (auto& [sessionID, jobQueue] : _sessionJobQueues)
 		{
+			GameMap* map = FindPlayerMap(sessionID);
+
 			if (jobQueue->pendingStop.dirty.load(std::memory_order_acquire))
 			{
-				auto it = _players.find(sessionID);
-				if (it != _players.end())
+				if (map)
 				{
-					Player* player = it->second.get();
-					player->posX     = jobQueue->pendingStop.curX;
-					player->posY     = jobQueue->pendingStop.curY;
-					player->destX    = jobQueue->pendingStop.curX;
-					player->destY    = jobQueue->pendingStop.curY;
-					player->isMoving = false;
+					Player* player = map->FindPlayer(sessionID);
+					if (player)
+					{
+						Log(L"STOP", Logger::Level::DEBUG, L"[%llu] client(%.2f, %.2f) server(%.2f, %.2f)", sessionID, jobQueue->pendingStop.curX, jobQueue->pendingStop.curY, player->posX, player->posY);
+						player->posX     = jobQueue->pendingStop.curX;
+						player->posY     = jobQueue->pendingStop.curY;
+						player->destX    = jobQueue->pendingStop.curX;
+						player->destY    = jobQueue->pendingStop.curY;
+						player->isMoving = false;
+					}
 				}
 				jobQueue->pendingStop.dirty.store(false, std::memory_order_release);
 			}
@@ -408,14 +456,19 @@ void GameServer::Update(int64_t deltaMs)
 			if (!jobQueue->pendingMove.dirty.load(std::memory_order_acquire))
 				continue;
 
-			auto it = _players.find(sessionID);
-			if (it == _players.end())
+			if (!map)
 			{
 				jobQueue->pendingMove.dirty.store(false, std::memory_order_relaxed);
 				continue;
 			}
 
-			Player* player = it->second.get();
+			Player* player = map->FindPlayer(sessionID);
+			if (!player)
+			{
+				jobQueue->pendingMove.dirty.store(false, std::memory_order_relaxed);
+				continue;
+			}
+
 			player->posX     = jobQueue->pendingMove.curX;
 			player->posY     = jobQueue->pendingMove.curY;
 			player->destX    = jobQueue->pendingMove.destX;
@@ -432,30 +485,33 @@ void GameServer::Update(int64_t deltaMs)
 				player->destX, player->destY,
 				player->speed
 			});
-			BroadcastExcept(sessionID, p);
+			BroadcastExcept(map->GetID(), sessionID, p);
 			_packetPool.Free(p);
 		}
 	}
 
 	float dt = static_cast<float>(deltaMs) / 1000.f;
-	for (auto& [id, player] : _players)
+	for (auto& [mapID, map] : _maps)
 	{
-		if (!player->isMoving) continue;
-		float dx   = player->destX - player->posX;
-		float dy   = player->destY - player->posY;
-		float dist = sqrtf(dx * dx + dy * dy);
-		float step = player->speed * dt;
-		if (dist <= step)
+		for (auto& [id, player] : map->GetPlayers())
 		{
-			player->posX     = player->destX;
-			player->posY     = player->destY;
-			player->isMoving = false;
-		}
-		else
-		{
-			float ratio  = step / dist;
-			player->posX += dx * ratio;
-			player->posY += dy * ratio;
+			if (!player->isMoving) continue;
+			float dx   = player->destX - player->posX;
+			float dy   = player->destY - player->posY;
+			float dist = sqrtf(dx * dx + dy * dy);
+			float step = player->speed * dt;
+			if (dist <= step)
+			{
+				player->posX     = player->destX;
+				player->posY     = player->destY;
+				player->isMoving = false;
+			}
+			else
+			{
+				float ratio  = step / dist;
+				player->posX += dx * ratio;
+				player->posY += dy * ratio;
+			}
 		}
 	}
 }

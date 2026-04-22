@@ -12,7 +12,7 @@
 #include <vector>
 
 #include "IOCPServer.h"
-#include "Player.h"
+#include "GameMap.h"
 #include "GlobalQueue.h"
 #include "JobQueue.h"
 #include "PacketTypes.h"
@@ -47,16 +47,18 @@ private:
     {
         FrameTaskType type;
         SessionID     sessionID;
-        SessionID     targetID  = 0;
-        uint64_t      accountId = 0;
+        SessionID     targetID    = 0;
+        uint64_t      accountId   = 0;
         std::string   displayName;
         float         curX  = 0.f, curY  = 0.f;
         float         destX = 0.f, destY = 0.f;
         uint16_t      skillID = 0;
+        MapID         mapID  = DEFAULT_MAP_ID;
     };
 
-    void BroadcastAll(Packet* packet);
-    void BroadcastExcept(SessionID excludeID, Packet* packet);
+    void BroadcastAll(MapID mapID, Packet* packet);
+    void BroadcastExcept(MapID mapID, SessionID excludeID, Packet* packet);
+    GameMap* FindPlayerMap(SessionID sessionID);
 
     void CreateImmediateThread(std::stop_token stopToken);
     void CreateFrameThread(std::stop_token stopToken);
@@ -97,7 +99,8 @@ private:
     std::unordered_map<SessionID, std::shared_ptr<JobQueue>> _sessionJobQueues;
     std::shared_mutex                                      _authStatesMutex;
     std::unordered_map<SessionID, SessionAuthState>        _sessionAuthStates;
-    std::unordered_map<SessionID, std::unique_ptr<Player>> _players;
+    std::unordered_map<MapID, std::unique_ptr<GameMap>>    _maps;
+    std::unordered_map<SessionID, MapID>                   _sessionToMapID;
 
     std::atomic<bool> _isGameRunning = false;
 };

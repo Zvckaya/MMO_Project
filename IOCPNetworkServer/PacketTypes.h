@@ -12,7 +12,8 @@ constexpr uint16_t PKT_SC_LOGIN_AUTH_RESULT  = 0x0102;
 
 constexpr uint16_t PKT_CS_MOVE               = 0x0201;
 constexpr uint16_t PKT_SC_MOVE               = 0x0202;
-constexpr uint16_t PKT_SC_SPAWN              = 0x0203;
+constexpr uint16_t PKT_SC_CREATE_MY_CHARACTER    = 0x0203;
+constexpr uint16_t PKT_SC_CREATE_OTHER_CHARACTER = 0x0208;
 constexpr uint16_t PKT_SC_DESPAWN            = 0x0204;
 constexpr uint16_t PKT_SC_MOVE_CORRECT       = 0x0205;
 constexpr uint16_t PKT_SC_WORLD_ENTER        = 0x0206;
@@ -66,8 +67,13 @@ struct CS_MOVE              { float curX; float curY; float destX; float destY; 
 // [0x0202] SC_MOVE
 struct ScMovePacket         { uint64_t sessionID; float curX; float curY; float destX; float destY; float speed; };
 
-// [0x0203] SC_SPAWN
-struct SC_SPAWN             { uint64_t sessionID; float x; float y; int32_t hp; int32_t maxHp; };
+// [0x0203] SC_CREATE_MY_CHARACTER
+// payload: fixed header + username(N)
+struct SC_CREATE_MY_CHARACTER    { uint64_t sessionID; float x; float y; int32_t hp; int32_t maxHp; float speed; uint16_t usernameLength; };
+
+// [0x0208] SC_CREATE_OTHER_CHARACTER
+// payload: fixed header + username(N)
+struct SC_CREATE_OTHER_CHARACTER { uint64_t sessionID; float x; float y; int32_t hp; int32_t maxHp; float speed; uint16_t usernameLength; };
 
 // [0x0204] SC_DESPAWN
 struct SC_DESPAWN           { uint64_t sessionID; };

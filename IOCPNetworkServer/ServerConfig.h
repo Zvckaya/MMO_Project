@@ -1,6 +1,9 @@
 ﻿#pragma once
 #include <cstdint>
 
+using MapID = uint32_t;
+constexpr MapID DEFAULT_MAP_ID = 0;
+
 constexpr int BUFFERSIZE = 20000;
 constexpr int MAXSESSIONSIZE = 20000;
 constexpr uint16_t PORT =  6000;

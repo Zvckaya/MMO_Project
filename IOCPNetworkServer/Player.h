@@ -14,6 +14,9 @@ public:
     {}
     ~Player() = default;
 
+    uint64_t           GetAccountId()   const { return _accountId; }
+    const std::string& GetDisplayName() const { return _displayName; }
+
     float    posX  = 0.f,  posY  = 0.f;
     float    destX = 0.f,  destY = 0.f;
     float    speed = 5.f;
