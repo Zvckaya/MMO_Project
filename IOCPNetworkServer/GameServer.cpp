@@ -50,6 +50,11 @@ bool GameServer::Start(std::optional<std::string_view> openIp, uint16_t port,
 	_maps.emplace(1, std::make_unique<GameMap>(1));
 	_maps.emplace(2, std::make_unique<GameMap>(2));
 
+	if (_gridMap.Load("map.txt"))
+		Log(L"GridMap", Logger::Level::SYSTEM, L"GridMap loaded (%d x %d)", _gridMap.GetWidth(), _gridMap.GetHeight());
+	else
+		Log(L"GridMap", Logger::Level::WARN, L"map.txt not found — wall check disabled");
+
 	{
 		DBClient db;
 		if (db.Connect(DB_HOST, DB_USER, DB_PASSWORD, DB_NAME, DB_PORT))

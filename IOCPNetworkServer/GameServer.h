@@ -14,6 +14,7 @@
 #include "IOCPServer.h"
 #include "DBClient.h"
 #include "GameMap.h"
+#include "GridMap.h"
 #include "GlobalQueue.h"
 #include "JobQueue.h"
 #include "PacketTypes.h"
@@ -129,5 +130,7 @@ private:
     std::unordered_map<uint16_t, ItemData, std::hash<uint16_t>> _itemDataMap;
 
     std::atomic<bool> _isGameRunning = false;
+
+    GridMap _gridMap;
 };
 
