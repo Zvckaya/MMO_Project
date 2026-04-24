@@ -57,7 +57,7 @@ bool GameServer::Start(std::optional<std::string_view> openIp, uint16_t port,
 
 	{
 		DBClient db;
-		if (db.Connect(DB_HOST, DB_USER, DB_PASSWORD, DB_NAME, DB_PORT))
+		if (db.Connect(GAME_DB_HOST, GAME_DB_USER, GAME_DB_PASSWORD, GAME_DB_NAME, GAME_DB_PORT))
 			_itemDataMap = db.LoadItemData();
 	}
 
@@ -358,7 +358,7 @@ void GameServer::CreateDBThread(std::stop_token stopToken)
 	std::stop_callback onStop(stopToken, [this] { _dbQueueCv.notify_all(); });
 
 	DBClient db;
-	if (!db.Connect(DB_HOST, DB_USER, DB_PASSWORD, DB_NAME, DB_PORT))
+	if (!db.Connect(GAME_DB_HOST, GAME_DB_USER, GAME_DB_PASSWORD, GAME_DB_NAME, GAME_DB_PORT))
 		return;
 
 	while (true)
@@ -376,7 +376,7 @@ void GameServer::CreateDBThread(std::stop_token stopToken)
 		if (!db.Ping())
 		{
 			db.Disconnect();
-			if (!db.Connect(DB_HOST, DB_USER, DB_PASSWORD, DB_NAME, DB_PORT))
+			if (!db.Connect(GAME_DB_HOST, GAME_DB_USER, GAME_DB_PASSWORD, GAME_DB_NAME, GAME_DB_PORT))
 				break;
 		}
 
@@ -493,7 +493,7 @@ void GameServer::ProcessFrameTask(const FrameTask& task)
 			Packet* p = _packetPool.Alloc();
 			p->Clear();
 			p->SetType(PKT_SC_CREATE_OTHER_CHARACTER);
-			p->WriteStruct(SC_CREATE_OTHER_CHARACTER{ task.sessionID, 0.f, 0.f, newPlayer->hp, newPlayer->maxHp, newPlayer->speed, static_cast<uint16_t>(task.displayName.size()) });
+			p->WriteStruct(SC_CREATE_OTHER_CHARACTER{ task.sessionID, newPlayer->posX,newPlayer->posY, newPlayer->hp, newPlayer->maxHp, newPlayer->speed, static_cast<uint16_t>(task.displayName.size()) });
 			p->PutData(task.displayName.c_str(), static_cast<int>(task.displayName.size()));
 			BroadcastExcept(task.mapID, task.sessionID, p);
 			_packetPool.Free(p);

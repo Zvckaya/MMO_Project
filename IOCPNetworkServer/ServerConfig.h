@@ -24,9 +24,9 @@ constexpr const wchar_t* AUTH_SERVER_HOST = L"127.0.0.1";
 constexpr uint16_t       AUTH_SERVER_PORT = 5105;
 constexpr const wchar_t* AUTH_VERIFY_PATH = L"/api/auth/tickets/consume";
 
-constexpr const char* DB_HOST     = "127.0.0.1";
-constexpr uint16_t    DB_PORT     = 3306;
-constexpr const char* DB_USER     = "root";
-constexpr const char* DB_PASSWORD = "ak47qmffor";
-constexpr const char* DB_NAME     = "loginserver";
+constexpr const char* GAME_DB_HOST     = "127.0.0.1";
+constexpr uint16_t    GAME_DB_PORT     = 3307;
+constexpr const char* GAME_DB_USER     = "root";
+constexpr const char* GAME_DB_PASSWORD = "ak47qmffor";
+constexpr const char* GAME_DB_NAME     = "gameserver";
 
