@@ -1,8 +1,10 @@
 #pragma once
 #include <memory>
 #include <unordered_map>
+#include <vector>
 #include "IOCPServer.h"
 #include "Player.h"
+#include "Monster.h"
 #include "ServerConfig.h"
 
 struct WorldItem {
@@ -57,9 +59,32 @@ public:
 
     std::unordered_map<uint64_t, WorldItem>& GetWorldItems() { return _worldItems; }
 
+    std::vector<std::unique_ptr<Monster>>& GetMonsters() { return _monsters; }
+
+    Monster* FindMonster(MonsterID id) const
+    {
+        for (auto& m : _monsters)
+            if (m->GetID() == id) return m.get();
+        return nullptr;
+    }
+
+    Monster* SpawnMonster(MonsterID id, uint16_t templateID, float spawnX, float spawnY)
+    {
+        _monsters.push_back(std::make_unique<Monster>(id, templateID, spawnX, spawnY));
+        return _monsters.back().get();
+    }
+
+    void RemoveMonster(MonsterID id)
+    {
+        auto it = std::remove_if(_monsters.begin(), _monsters.end(),
+            [id](const std::unique_ptr<Monster>& m) { return m->GetID() == id; });
+        _monsters.erase(it, _monsters.end());
+    }
+
 private:
     MapID    _mapID;
     uint64_t _itemUIDCounter = 0;
     std::unordered_map<SessionID, std::unique_ptr<Player>> _players;
     std::unordered_map<uint64_t, WorldItem>                _worldItems;
+    std::vector<std::unique_ptr<Monster>>                  _monsters;
 };

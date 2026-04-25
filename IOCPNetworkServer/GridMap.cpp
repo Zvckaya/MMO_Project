@@ -7,7 +7,7 @@ bool GridMap::Load(const std::string& path)
     std::ifstream file(path);
     if (!file.is_open()) return false;
 
-    file >> _width >> _height;
+    file >> _width >> _height >> _originX >> _originY;
     if (_width <= 0 || _height <= 0) return false;
 
     _tiles.assign(_height, std::vector<uint8_t>(_width, 0));
@@ -30,7 +30,7 @@ bool GridMap::IsWalkable(int gx, int gy) const
 
 bool GridMap::IsWalkableWorld(float wx, float wy) const
 {
-    int gx = static_cast<int>((wx - WORLD_ORIGIN_X) / TILE_SIZE);
-    int gy = static_cast<int>((wy - WORLD_ORIGIN_Y) / TILE_SIZE);
+    int gx = static_cast<int>((wx - _originX) / TILE_SIZE);
+    int gy = static_cast<int>((wy - _originY) / TILE_SIZE);
     return IsWalkable(gx, gy);
 }

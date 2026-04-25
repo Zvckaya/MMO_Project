@@ -50,10 +50,10 @@ bool GameServer::Start(std::optional<std::string_view> openIp, uint16_t port,
 	_maps.emplace(1, std::make_unique<GameMap>(1));
 	_maps.emplace(2, std::make_unique<GameMap>(2));
 
-	if (_gridMap.Load("map.txt"))
+	if (_gridMap.Load("maps/map_001.txt"))
 		Log(L"GridMap", Logger::Level::SYSTEM, L"GridMap loaded (%d x %d)", _gridMap.GetWidth(), _gridMap.GetHeight());
 	else
-		Log(L"GridMap", Logger::Level::WARN, L"map.txt not found — wall check disabled");
+		Log(L"GridMap", Logger::Level::WARN, L"maps/map_001.txt not found — wall check disabled");
 
 	{
 		DBClient db;
@@ -116,6 +116,10 @@ void GameServer::Stop()
 	}
 
 	{
+		std::lock_guard lock(_unauthMutex);
+		_unauthSessions.clear();
+	}
+	{
 		std::unique_lock lock(_authStatesMutex);
 		_sessionAuthStates.clear();
 	}
@@ -148,8 +152,8 @@ void GameServer::OnClientJoin(SessionID sessionID)
 		_sessionJobQueues[sessionID] = std::move(jobQueue);
 	}
 	{
-		std::unique_lock lock(_authStatesMutex);
-		_sessionAuthStates[sessionID] = SessionAuthState{};
+		std::lock_guard lock(_unauthMutex);
+		_unauthSessions.insert(sessionID);
 	}
 }
 
@@ -160,6 +164,10 @@ void GameServer::OnClientLeave(SessionID sessionID)
 	{
 		std::unique_lock lock(_jobQueuesMutex);
 		_sessionJobQueues.erase(sessionID);
+	}
+	{
+		std::lock_guard lock(_unauthMutex);
+		_unauthSessions.erase(sessionID);
 	}
 	{
 		std::unique_lock lock(_authStatesMutex);
@@ -190,12 +198,16 @@ void GameServer::OnRecv(SessionID sessionID, Packet* packet)
 		jobQueue = it->second;
 	}
 
-	if (!jobQueue->isAuthenticated && packet->GetType() != PKT_CS_LOGIN_AUTH) //인증 패킷이 아니고, 인증 세션도 아니면 disconnect
 	{
-		_packetPool.Free(packet);
-		ReleaseContentRef(sessionID);
-		Disconnect(sessionID);
-		return;
+		std::shared_lock lock(_authStatesMutex);
+		bool isAuth = _sessionAuthStates.count(sessionID) > 0;
+		if (!isAuth && packet->GetType() != PKT_CS_LOGIN_AUTH)
+		{
+			_packetPool.Free(packet);
+			ReleaseContentRef(sessionID);
+			Disconnect(sessionID);
+			return;
+		}
 	}
 
 	jobQueue->Post([this, sessionID, packet]()
@@ -247,19 +259,12 @@ void GameServer::ProcessAuthResult(SessionID sessionID, const AuthResult& auth)
 		if (auth.valid)
 		{
 			{
-				std::shared_lock lock(_jobQueuesMutex);
-				auto it = _sessionJobQueues.find(sessionID);
-				if (it != _sessionJobQueues.end())
-					it->second->isAuthenticated = true;
+				std::lock_guard lock(_unauthMutex);
+				_unauthSessions.erase(sessionID);
 			}
 			{
 				std::unique_lock lock(_authStatesMutex);
-				auto it = _sessionAuthStates.find(sessionID);
-				if (it != _sessionAuthStates.end())
-				{
-					it->second.accountId   = accountId;
-					it->second.displayName = displayName;
-				}
+				_sessionAuthStates[sessionID] = SessionAuthState{ accountId, displayName };
 			}
 		}
 
@@ -837,12 +842,24 @@ void GameServer::Update(int64_t deltaMs)
 				continue;
 			}
 
+			jobQueue->pendingMove.dirty.store(false, std::memory_order_release);
+
+			if (_gridMap.IsLoaded() && !_gridMap.IsWalkableWorld(jobQueue->pendingMove.destX, jobQueue->pendingMove.destY))
+			{
+				Packet* corr = _packetPool.Alloc();
+				corr->Clear();
+				corr->SetType(PKT_SC_MOVE_CORRECT);
+				corr->WriteStruct(SC_MOVE_CORRECT{ player->posX, player->posY });
+				SendPacket(sessionID, corr);
+				_packetPool.Free(corr);
+				continue;
+			}
+
 			player->posX     = jobQueue->pendingMove.curX;
 			player->posY     = jobQueue->pendingMove.curY;
 			player->destX    = jobQueue->pendingMove.destX;
 			player->destY    = jobQueue->pendingMove.destY;
 			player->isMoving = true;
-			jobQueue->pendingMove.dirty.store(false, std::memory_order_release);
 
 			Packet* p = _packetPool.Alloc();
 			p->Clear();

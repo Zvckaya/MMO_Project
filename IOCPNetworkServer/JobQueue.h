@@ -29,7 +29,6 @@ public:
     void Post(std::function<void()> callback);
     void Execute(uint64_t endTick);
 
-    std::atomic<bool> isAuthenticated = false;
     PendingMove       pendingMove;
     PendingStop       pendingStop;
 
