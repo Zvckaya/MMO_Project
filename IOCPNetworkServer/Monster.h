@@ -1,9 +1,12 @@
 #pragma once
 #include <cstdint>
+#include <vector>
+#include <utility>
+#include "Creature.h"
 
 using MonsterID = uint64_t;
 
-class Monster
+class Monster : public Creature
 {
 public:
     Monster(MonsterID id, uint16_t templateID, float spawnX, float spawnY)
@@ -14,6 +17,7 @@ public:
     {
         posX = spawnX;
         posY = spawnY;
+        speed = 3.f;
     }
 
     MonsterID GetID()         const { return _id; }
@@ -21,12 +25,8 @@ public:
     float     GetSpawnX()     const { return _spawnX; }
     float     GetSpawnY()     const { return _spawnY; }
 
-    float   posX = 0.f, posY = 0.f;
-    float   destX = 0.f, destY = 0.f;
-    float   speed = 3.f;
-    bool    isMoving = false;
-    int32_t hp    = 100;
-    int32_t maxHp = 100;
+    std::vector<std::pair<float, float>> path;
+    int pathIndex = 0;
 
 private:
     MonsterID _id;
