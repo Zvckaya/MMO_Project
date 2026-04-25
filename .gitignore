@@ -366,3 +366,4 @@ FodyWeavers.xsd
 CLAUDE.md
 AGENTS.md
 .claude/
+/debug_log

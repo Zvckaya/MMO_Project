@@ -1,5 +1,6 @@
 #include "GameServer.h"
 #include "AuthClient.h"
+#include "AStar.h"
 #include "Logger.h"
 #include <chrono>
 #include <cmath>
@@ -49,6 +50,15 @@ bool GameServer::Start(std::optional<std::string_view> openIp, uint16_t port,
 
 	_maps.emplace(1, std::make_unique<GameMap>(1));
 	_maps.emplace(2, std::make_unique<GameMap>(2));
+
+	{
+		GameMap* map1 = _maps[1].get();
+		map1->SpawnMonster(++_monsterIDCounter, 1,  5.5f,  4.5f);
+		map1->SpawnMonster(++_monsterIDCounter, 1, 25.0f,  5.0f);
+		map1->SpawnMonster(++_monsterIDCounter, 1,  6.0f, 12.0f);
+		map1->SpawnMonster(++_monsterIDCounter, 1, 20.0f, 10.0f);
+		map1->SpawnMonster(++_monsterIDCounter, 1, 14.0f, 20.0f);
+	}
 
 	if (_gridMap.Load("maps/map_001.txt"))
 		Log(L"GridMap", Logger::Level::SYSTEM, L"GridMap loaded (%d x %d)", _gridMap.GetWidth(), _gridMap.GetHeight());
@@ -458,7 +468,17 @@ void GameServer::ProcessFrameTask(const FrameTask& task)
 			SendPacket(task.sessionID, p);
 			_packetPool.Free(p);
 		}
-		// 3. 인벤토리
+		// 3. 맵 몬스터 목록
+		for (auto& monster : map->GetMonsters())
+		{
+			Packet* p = _packetPool.Alloc();
+			p->Clear();
+			p->SetType(PKT_SC_NPC_SPAWN);
+			p->WriteStruct(SC_NPC_SPAWN{ monster->GetID(), monster->GetTemplateID(), monster->posX, monster->posY, monster->hp, monster->maxHp });
+			SendPacket(task.sessionID, p);
+			_packetPool.Free(p);
+		}
+		// 4. 인벤토리
 		for (uint16_t i = 0; i < MAX_INVENTORY_SLOTS; ++i)
 		{
 			const auto& slot = newPlayer->inventory[i];
@@ -559,23 +579,42 @@ void GameServer::ProcessFrameTask(const FrameTask& task)
 		if (!map) break;
 
 		Player* attacker = map->FindPlayer(task.sessionID);
-		Player* target   = map->FindPlayer(task.targetID);
-		if (!attacker || !target) break;
+		if (!attacker) break;
 
-		float dx = attacker->posX - target->posX;
-		float dy = attacker->posY - target->posY;
+		Monster* monsterTarget = map->FindMonster(task.targetID);
+		if (!monsterTarget || monsterTarget->isDead) break;
+
+		float dx = attacker->posX - monsterTarget->posX;
+		float dy = attacker->posY - monsterTarget->posY;
 		if (sqrtf(dx * dx + dy * dy) > ATTACK_RANGE) break;
 
 		constexpr int32_t damage = 10;
-		target->hp -= damage;
-		if (target->hp < 0) target->hp = 0;
+		monsterTarget->hp -= damage;
+		if (monsterTarget->hp < 0) monsterTarget->hp = 0;
 
 		Packet* p = _packetPool.Alloc();
 		p->Clear();
 		p->SetType(PKT_SC_ATTACK);
-		p->WriteStruct(SC_ATTACK{ task.sessionID, task.targetID, damage, target->hp });
+		p->WriteStruct(SC_ATTACK{ task.sessionID, task.targetID, damage, monsterTarget->hp });
 		BroadcastAll(map->GetID(), p);
 		_packetPool.Free(p);
+
+		if (monsterTarget->hp == 0)
+		{
+			monsterTarget->isDead       = true;
+			monsterTarget->respawnTimer = MONSTER_RESPAWN_SEC;
+			monsterTarget->state        = Monster::State::idle;
+			monsterTarget->target       = 0;
+			monsterTarget->isMoving     = false;
+			monsterTarget->path.clear();
+
+			Packet* dp = _packetPool.Alloc();
+			dp->Clear();
+			dp->SetType(PKT_SC_NPC_DESPAWN);
+			dp->WriteStruct(SC_NPC_DESPAWN{ monsterTarget->GetID() });
+			BroadcastAll(map->GetID(), dp);
+			_packetPool.Free(dp);
+		}
 		break;
 	}
 	case FrameTaskType::playerSkill:
@@ -778,6 +817,16 @@ void GameServer::ProcessFrameTask(const FrameTask& task)
 			SendPacket(task.sessionID, p);
 			_packetPool.Free(p);
 		}
+		// 새 맵 몬스터 목록
+		for (auto& monster : newMap->GetMonsters())
+		{
+			Packet* p = _packetPool.Alloc();
+			p->Clear();
+			p->SetType(PKT_SC_NPC_SPAWN);
+			p->WriteStruct(SC_NPC_SPAWN{ monster->GetID(), monster->GetTemplateID(), monster->posX, monster->posY, monster->hp, monster->maxHp });
+			SendPacket(task.sessionID, p);
+			_packetPool.Free(p);
+		}
 		// 4. 새 맵 플레이어들에게 입장 알림
 		{
 			Packet* p = _packetPool.Alloc();
@@ -950,6 +999,255 @@ void GameServer::Update(int64_t deltaMs)
 				player->posY += dy * ratio;
 			}
 		}
+
+		for (auto& monster : map->GetMonsters())
+			UpdateMonsterFSM(map.get(), monster.get(), dt);
 	}
 }
 
+uint64_t GameServer::FindNearestPlayerInAggro(GameMap* map, const Monster* monster) const
+{
+	uint64_t nearestID   = 0;
+	float    nearestDist = MONSTER_AGGRO_RANGE;
+
+	for (auto& [id, player] : map->GetPlayers())
+	{
+		float dx   = player->posX - monster->posX;
+		float dy   = player->posY - monster->posY;
+		float dist = sqrtf(dx * dx + dy * dy);
+		if (dist >= nearestDist) continue;
+		if (_gridMap.IsLoaded() && !_gridMap.HasLOS(monster->posX, monster->posY, player->posX, player->posY)) continue;
+		nearestDist = dist;
+		nearestID   = id;
+	}
+	return nearestID;
+}
+
+void GameServer::RecalcMonsterPath(Monster* monster, const Player* target)
+{
+	AStar::Path newPath;
+	if (_gridMap.IsLoaded() &&
+		AStar::FindPath(_gridMap, monster->posX, monster->posY, target->posX, target->posY, newPath) &&
+		!newPath.empty())
+	{
+		monster->path      = std::move(newPath);
+		monster->pathIndex = 0;
+	}
+	else
+	{
+		monster->path      = {{ target->posX, target->posY }};
+		monster->pathIndex = 0;
+	}
+}
+
+void GameServer::RecalcMonsterPathToSpawn(Monster* monster)
+{
+	AStar::Path newPath;
+	if (_gridMap.IsLoaded() &&
+		AStar::FindPath(_gridMap, monster->posX, monster->posY, monster->GetSpawnX(), monster->GetSpawnY(), newPath) &&
+		!newPath.empty())
+	{
+		monster->path      = std::move(newPath);
+		monster->pathIndex = 0;
+	}
+	else
+	{
+		monster->path      = {{ monster->GetSpawnX(), monster->GetSpawnY() }};
+		monster->pathIndex = 0;
+	}
+}
+
+void GameServer::BroadcastNpcMove(GameMap* map, const Monster* monster)
+{
+	float destX = monster->posX;
+	float destY = monster->posY;
+	if (monster->pathIndex < static_cast<int>(monster->path.size()))
+	{
+		destX = monster->path[monster->pathIndex].first;
+		destY = monster->path[monster->pathIndex].second;
+	}
+
+	Packet* p = _packetPool.Alloc();
+	p->Clear();
+	p->SetType(PKT_SC_NPC_MOVE);
+	p->WriteStruct(SC_NPC_MOVE{ monster->GetID(), monster->posX, monster->posY, destX, destY, monster->speed });
+	BroadcastAll(map->GetID(), p);
+	_packetPool.Free(p);
+}
+
+void GameServer::UpdateMonsterFSM(GameMap* map, Monster* monster, float dt)
+{
+	if (monster->isDead)
+	{
+		monster->respawnTimer -= dt;
+		if (monster->respawnTimer <= 0.f)
+		{
+			monster->isDead   = false;
+			monster->hp       = monster->maxHp;
+			monster->posX     = monster->GetSpawnX();
+			monster->posY     = monster->GetSpawnY();
+			monster->state    = Monster::State::idle;
+			monster->target   = 0;
+			monster->isMoving = false;
+			monster->path.clear();
+
+			Packet* p = _packetPool.Alloc();
+			p->Clear();
+			p->SetType(PKT_SC_NPC_SPAWN);
+			p->WriteStruct(SC_NPC_SPAWN{ monster->GetID(), monster->GetTemplateID(), monster->posX, monster->posY, monster->hp, monster->maxHp });
+			BroadcastAll(map->GetID(), p);
+			_packetPool.Free(p);
+		}
+		return;
+	}
+
+	auto advancePath = [&]() -> bool
+	{
+		if (monster->pathIndex >= static_cast<int>(monster->path.size())) return false;
+		float tx   = monster->path[monster->pathIndex].first;
+		float ty   = monster->path[monster->pathIndex].second;
+		float pdx  = tx - monster->posX;
+		float pdy  = ty - monster->posY;
+		float dist = sqrtf(pdx * pdx + pdy * pdy);
+		float step = monster->speed * dt;
+		if (dist <= step)
+		{
+			monster->posX = tx;
+			monster->posY = ty;
+			monster->pathIndex++;
+			return true;
+		}
+		monster->posX += pdx / dist * step;
+		monster->posY += pdy / dist * step;
+		return false;
+	};
+
+	switch (monster->state)
+	{
+	case Monster::State::idle:
+	{
+		uint64_t targetID = FindNearestPlayerInAggro(map, monster);
+		if (targetID == 0) break;
+		Player* target = map->FindPlayer(targetID);
+		if (!target) break;
+
+		monster->target = targetID;
+		monster->state  = Monster::State::chase;
+		monster->pathRecalcTimer = 0.f;
+		RecalcMonsterPath(monster, target);
+		monster->isMoving = !monster->path.empty();
+		BroadcastNpcMove(map, monster);
+		break;
+	}
+	case Monster::State::chase:
+	{
+		Player* target = map->FindPlayer(monster->target);
+		if (!target)
+		{
+			monster->state = Monster::State::returnToSpawn;
+			RecalcMonsterPathToSpawn(monster);
+			monster->isMoving = true;
+			BroadcastNpcMove(map, monster);
+			break;
+		}
+
+		float dx            = target->posX - monster->posX;
+		float dy            = target->posY - monster->posY;
+		float distToTarget  = sqrtf(dx * dx + dy * dy);
+		float sdx           = monster->posX - monster->GetSpawnX();
+		float sdy           = monster->posY - monster->GetSpawnY();
+		float distFromSpawn = sqrtf(sdx * sdx + sdy * sdy);
+
+		if (distFromSpawn > MONSTER_LEASH_RANGE)
+		{
+			monster->state = Monster::State::returnToSpawn;
+			RecalcMonsterPathToSpawn(monster);
+			monster->isMoving = true;
+			BroadcastNpcMove(map, monster);
+			break;
+		}
+
+		if (distToTarget <= MONSTER_ATTACK_RANGE)
+		{
+			monster->state        = Monster::State::attack;
+			monster->attackCooldown = 0.f;
+			monster->isMoving     = false;
+			monster->path.clear();
+			break;
+		}
+
+		monster->pathRecalcTimer -= dt;
+		bool exhausted = monster->pathIndex >= static_cast<int>(monster->path.size());
+		if (monster->pathRecalcTimer <= 0.f || exhausted)
+		{
+			RecalcMonsterPath(monster, target);
+			monster->pathRecalcTimer = MONSTER_PATH_RECALC_SEC;
+			monster->isMoving = !monster->path.empty();
+			BroadcastNpcMove(map, monster);
+		}
+
+		if (advancePath() && monster->pathIndex < static_cast<int>(monster->path.size()))
+			BroadcastNpcMove(map, monster);
+		break;
+	}
+	case Monster::State::attack:
+	{
+		Player* target = map->FindPlayer(monster->target);
+		if (!target)
+		{
+			monster->state = Monster::State::returnToSpawn;
+			RecalcMonsterPathToSpawn(monster);
+			monster->isMoving = true;
+			BroadcastNpcMove(map, monster);
+			break;
+		}
+
+		float dx           = target->posX - monster->posX;
+		float dy           = target->posY - monster->posY;
+		float distToTarget = sqrtf(dx * dx + dy * dy);
+
+		if (distToTarget > MONSTER_ATTACK_RANGE)
+		{
+			monster->state = Monster::State::chase;
+			monster->pathRecalcTimer = 0.f;
+			break;
+		}
+
+		monster->attackCooldown -= dt;
+		if (monster->attackCooldown <= 0.f)
+		{
+			monster->attackCooldown = MONSTER_ATTACK_COOLDOWN;
+			constexpr int32_t monsterDamage = 5;
+			target->hp -= monsterDamage;
+			if (target->hp < 0) target->hp = 0;
+
+			Packet* p = _packetPool.Alloc();
+			p->Clear();
+			p->SetType(PKT_SC_NPC_ATTACK);
+			p->WriteStruct(SC_NPC_ATTACK{ monster->GetID(), monster->target, monsterDamage, target->hp });
+			BroadcastAll(map->GetID(), p);
+			_packetPool.Free(p);
+		}
+		break;
+	}
+	case Monster::State::returnToSpawn:
+	{
+		if (monster->pathIndex >= static_cast<int>(monster->path.size()))
+		{
+			monster->posX     = monster->GetSpawnX();
+			monster->posY     = monster->GetSpawnY();
+			monster->hp       = monster->maxHp;
+			monster->state    = Monster::State::idle;
+			monster->target   = 0;
+			monster->isMoving = false;
+			monster->path.clear();
+			BroadcastNpcMove(map, monster);
+			break;
+		}
+
+		if (advancePath() && monster->pathIndex < static_cast<int>(monster->path.size()))
+			BroadcastNpcMove(map, monster);
+		break;
+	}
+	}
+}

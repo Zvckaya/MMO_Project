@@ -109,6 +109,12 @@ private:
     void EnqueueDBRequest(DBRequest req);
     void CreateDBThread(std::stop_token stopToken);
 
+    uint64_t FindNearestPlayerInAggro(GameMap* map, const Monster* monster) const;
+    void     RecalcMonsterPath(Monster* monster, const Player* target);
+    void     RecalcMonsterPathToSpawn(Monster* monster);
+    void     BroadcastNpcMove(GameMap* map, const Monster* monster);
+    void     UpdateMonsterFSM(GameMap* map, Monster* monster, float dt);
+
     std::mutex                  _authQueueMutex;
     std::condition_variable     _authQueueCv;
     std::queue<AuthRequest>     _authPendingQueue;
@@ -134,7 +140,8 @@ private:
     std::unordered_map<SessionID, MapID>                        _sessionToMapID;
     std::unordered_map<uint16_t, ItemData, std::hash<uint16_t>> _itemDataMap;
 
-    std::atomic<bool> _isGameRunning = false;
+    std::atomic<bool>     _isGameRunning     = false;
+    std::atomic<uint64_t> _monsterIDCounter  = 0;
 
     GridMap _gridMap;
 };

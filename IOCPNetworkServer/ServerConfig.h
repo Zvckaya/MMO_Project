@@ -28,3 +28,10 @@ constexpr const char* GAME_DB_USER     = "root";
 constexpr const char* GAME_DB_PASSWORD = "ak47qmffor";
 constexpr const char* GAME_DB_NAME     = "gameserver";
 
+constexpr float MONSTER_AGGRO_RANGE     = 10.f;
+constexpr float MONSTER_ATTACK_RANGE    = 1.5f;
+constexpr float MONSTER_LEASH_RANGE     = 20.f;
+constexpr float MONSTER_ATTACK_COOLDOWN = 2.f;
+constexpr float MONSTER_PATH_RECALC_SEC = 0.5f;
+constexpr float MONSTER_RESPAWN_SEC     = 10.f;
+
