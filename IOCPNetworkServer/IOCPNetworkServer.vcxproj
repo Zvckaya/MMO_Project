@@ -79,6 +79,7 @@
       <LanguageStandard>stdcpp20</LanguageStandard>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)Core;$(ProjectDir)Network;$(ProjectDir)Game;$(ProjectDir)Map;$(ProjectDir)DB;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -97,6 +98,7 @@
       <LanguageStandard_C>stdc17</LanguageStandard_C>
       <Optimization>Disabled</Optimization>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)Core;$(ProjectDir)Network;$(ProjectDir)Game;$(ProjectDir)Map;$(ProjectDir)DB;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -112,7 +114,7 @@
       <LanguageStandard>stdcpp20</LanguageStandard>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalIncludeDirectories>C:\Program Files\MySQL\MySQL Server 8.0\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)Core;$(ProjectDir)Network;$(ProjectDir)Game;$(ProjectDir)Map;$(ProjectDir)DB;C:\Program Files\MySQL\MySQL Server 8.0\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -136,7 +138,7 @@
       <LanguageStandard_C>stdc17</LanguageStandard_C>
       <Optimization>Disabled</Optimization>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalIncludeDirectories>C:\Program Files\MySQL\MySQL Server 8.0\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)Core;$(ProjectDir)Network;$(ProjectDir)Game;$(ProjectDir)Map;$(ProjectDir)DB;C:\Program Files\MySQL\MySQL Server 8.0\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -149,34 +151,44 @@
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="AuthClient.cpp" />
-    <ClCompile Include="DBClient.cpp" />
-    <ClCompile Include="GameServer.cpp" />
-    <ClCompile Include="Logger.cpp" />
-    <ClCompile Include="GlobalQueue.cpp" />
-    <ClCompile Include="IOCPServer.cpp" />
-    <ClCompile Include="JobQueue.cpp" />
     <ClCompile Include="main.cpp" />
-    <ClCompile Include="GridMap.cpp" />
-    <ClCompile Include="PacketHandler.cpp" />
-    <ClCompile Include="RingBuffer.cpp" />
-    <ClCompile Include="Session.cpp" />
+    <ClCompile Include="Core\GlobalQueue.cpp" />
+    <ClCompile Include="Core\JobQueue.cpp" />
+    <ClCompile Include="Core\Logger.cpp" />
+    <ClCompile Include="Network\IOCPServer.cpp" />
+    <ClCompile Include="Network\Packet.cpp" />
+    <ClCompile Include="Network\PacketProc.cpp" />
+    <ClCompile Include="Network\RingBuffer.cpp" />
+    <ClCompile Include="Network\Session.cpp" />
+    <ClCompile Include="Game\GameServer.cpp" />
+    <ClCompile Include="Game\PacketHandler.cpp" />
+    <ClCompile Include="Map\GridMap.cpp" />
+    <ClCompile Include="Map\AStar.cpp" />
+    <ClCompile Include="DB\DBClient.cpp" />
+    <ClCompile Include="DB\AuthClient.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="AuthClient.h" />
-    <ClInclude Include="GameServer.h" />
-    <ClInclude Include="Logger.h" />
-    <ClInclude Include="GlobalQueue.h" />
-    <ClInclude Include="IOCPServer.h" />
-    <ClInclude Include="Job.h" />
-    <ClInclude Include="JobQueue.h" />
-    <ClInclude Include="MemoryPool.h" />
-    <ClInclude Include="Packet.h" />
-    <ClInclude Include="PacketTypes.h" />
-    <ClInclude Include="Player.h" />
-    <ClInclude Include="RingBuffer.h" />
     <ClInclude Include="ServerConfig.h" />
-    <ClInclude Include="Session.h" />
+    <ClInclude Include="Core\GlobalQueue.h" />
+    <ClInclude Include="Core\Job.h" />
+    <ClInclude Include="Core\JobQueue.h" />
+    <ClInclude Include="Core\Logger.h" />
+    <ClInclude Include="Core\MemoryPool.h" />
+    <ClInclude Include="Network\IOCPServer.h" />
+    <ClInclude Include="Network\Packet.h" />
+    <ClInclude Include="Network\PacketProc.h" />
+    <ClInclude Include="Network\RingBuffer.h" />
+    <ClInclude Include="Network\Session.h" />
+    <ClInclude Include="Game\Creature.h" />
+    <ClInclude Include="Game\GameMap.h" />
+    <ClInclude Include="Game\GameServer.h" />
+    <ClInclude Include="Game\Monster.h" />
+    <ClInclude Include="Game\PacketTypes.h" />
+    <ClInclude Include="Game\Player.h" />
+    <ClInclude Include="Map\AStar.h" />
+    <ClInclude Include="Map\GridMap.h" />
+    <ClInclude Include="DB\AuthClient.h" />
+    <ClInclude Include="DB\DBClient.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

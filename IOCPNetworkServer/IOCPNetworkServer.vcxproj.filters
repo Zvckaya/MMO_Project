@@ -1,81 +1,128 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
-    <Filter Include="소스 파일">
-      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
-      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    <Filter Include="Core">
+      <UniqueIdentifier>{a1b2c3d4-0001-0000-0000-000000000001}</UniqueIdentifier>
     </Filter>
-    <Filter Include="헤더 파일">
-      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
-      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
+    <Filter Include="Network">
+      <UniqueIdentifier>{a1b2c3d4-0002-0000-0000-000000000002}</UniqueIdentifier>
     </Filter>
-    <Filter Include="리소스 파일">
-      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
-      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    <Filter Include="Game">
+      <UniqueIdentifier>{a1b2c3d4-0003-0000-0000-000000000003}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Map">
+      <UniqueIdentifier>{a1b2c3d4-0004-0000-0000-000000000004}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="DB">
+      <UniqueIdentifier>{a1b2c3d4-0005-0000-0000-000000000005}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="main.cpp">
-      <Filter>소스 파일</Filter>
+    <ClCompile Include="main.cpp" />
+    <ClCompile Include="Core\GlobalQueue.cpp">
+      <Filter>Core</Filter>
     </ClCompile>
-    <ClCompile Include="RingBuffer.cpp">
-      <Filter>소스 파일</Filter>
+    <ClCompile Include="Core\JobQueue.cpp">
+      <Filter>Core</Filter>
     </ClCompile>
-    <ClCompile Include="IOCPServer.cpp">
-      <Filter>소스 파일</Filter>
+    <ClCompile Include="Core\Logger.cpp">
+      <Filter>Core</Filter>
     </ClCompile>
-    <ClCompile Include="Session.cpp">
-      <Filter>소스 파일</Filter>
+    <ClCompile Include="Network\IOCPServer.cpp">
+      <Filter>Network</Filter>
     </ClCompile>
-    <ClCompile Include="GameServer.cpp">
-      <Filter>소스 파일</Filter>
+    <ClCompile Include="Network\Packet.cpp">
+      <Filter>Network</Filter>
     </ClCompile>
-    <ClCompile Include="GlobalQueue.cpp">
-      <Filter>소스 파일</Filter>
+    <ClCompile Include="Network\PacketProc.cpp">
+      <Filter>Network</Filter>
     </ClCompile>
-    <ClCompile Include="JobQueue.cpp">
-      <Filter>소스 파일</Filter>
+    <ClCompile Include="Network\RingBuffer.cpp">
+      <Filter>Network</Filter>
     </ClCompile>
-    <ClCompile Include="PacketHandler.cpp">
-      <Filter>소스 파일</Filter>
+    <ClCompile Include="Network\Session.cpp">
+      <Filter>Network</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\GameServer.cpp">
+      <Filter>Game</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\PacketHandler.cpp">
+      <Filter>Game</Filter>
+    </ClCompile>
+    <ClCompile Include="Map\GridMap.cpp">
+      <Filter>Map</Filter>
+    </ClCompile>
+    <ClCompile Include="Map\AStar.cpp">
+      <Filter>Map</Filter>
+    </ClCompile>
+    <ClCompile Include="DB\DBClient.cpp">
+      <Filter>DB</Filter>
+    </ClCompile>
+    <ClCompile Include="DB\AuthClient.cpp">
+      <Filter>DB</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="RingBuffer.h">
-      <Filter>헤더 파일</Filter>
+    <ClInclude Include="ServerConfig.h" />
+    <ClInclude Include="Core\GlobalQueue.h">
+      <Filter>Core</Filter>
     </ClInclude>
-    <ClInclude Include="IOCPServer.h">
-      <Filter>헤더 파일</Filter>
+    <ClInclude Include="Core\Job.h">
+      <Filter>Core</Filter>
     </ClInclude>
-    <ClInclude Include="Session.h">
-      <Filter>헤더 파일</Filter>
+    <ClInclude Include="Core\JobQueue.h">
+      <Filter>Core</Filter>
     </ClInclude>
-    <ClInclude Include="ServerConfig.h">
-      <Filter>헤더 파일</Filter>
+    <ClInclude Include="Core\Logger.h">
+      <Filter>Core</Filter>
     </ClInclude>
-    <ClInclude Include="GameServer.h">
-      <Filter>헤더 파일</Filter>
+    <ClInclude Include="Core\MemoryPool.h">
+      <Filter>Core</Filter>
     </ClInclude>
-    <ClInclude Include="Packet.h">
-      <Filter>헤더 파일</Filter>
+    <ClInclude Include="Network\IOCPServer.h">
+      <Filter>Network</Filter>
     </ClInclude>
-    <ClInclude Include="Player.h">
-      <Filter>헤더 파일</Filter>
+    <ClInclude Include="Network\Packet.h">
+      <Filter>Network</Filter>
     </ClInclude>
-    <ClInclude Include="GlobalQueue.h">
-      <Filter>헤더 파일</Filter>
+    <ClInclude Include="Network\PacketProc.h">
+      <Filter>Network</Filter>
     </ClInclude>
-    <ClInclude Include="Job.h">
-      <Filter>헤더 파일</Filter>
+    <ClInclude Include="Network\RingBuffer.h">
+      <Filter>Network</Filter>
     </ClInclude>
-    <ClInclude Include="JobQueue.h">
-      <Filter>헤더 파일</Filter>
+    <ClInclude Include="Network\Session.h">
+      <Filter>Network</Filter>
     </ClInclude>
-    <ClInclude Include="MemoryPool.h">
-      <Filter>헤더 파일</Filter>
+    <ClInclude Include="Game\Creature.h">
+      <Filter>Game</Filter>
     </ClInclude>
-    <ClInclude Include="PacketTypes.h">
-      <Filter>헤더 파일</Filter>
+    <ClInclude Include="Game\GameMap.h">
+      <Filter>Game</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\GameServer.h">
+      <Filter>Game</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Monster.h">
+      <Filter>Game</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\PacketTypes.h">
+      <Filter>Game</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Player.h">
+      <Filter>Game</Filter>
+    </ClInclude>
+    <ClInclude Include="Map\AStar.h">
+      <Filter>Map</Filter>
+    </ClInclude>
+    <ClInclude Include="Map\GridMap.h">
+      <Filter>Map</Filter>
+    </ClInclude>
+    <ClInclude Include="DB\AuthClient.h">
+      <Filter>DB</Filter>
+    </ClInclude>
+    <ClInclude Include="DB\DBClient.h">
+      <Filter>DB</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>
