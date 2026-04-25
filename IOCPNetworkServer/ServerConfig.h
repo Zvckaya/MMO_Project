@@ -14,8 +14,6 @@ constexpr int   TLS_CACHE_BATCH = 32;
 constexpr float    ATTACK_RANGE        = 2.f;
 
 constexpr float TILE_SIZE      = 0.5f;
-constexpr float WORLD_ORIGIN_X = -100.f;
-constexpr float WORLD_ORIGIN_Y = -100.f;
 constexpr int      MAX_INVENTORY_SLOTS = 30;
 constexpr float    ITEM_PICKUP_RANGE   = 3.f;
 constexpr uint64_t ITEM_DESPAWN_MS     = 30000;

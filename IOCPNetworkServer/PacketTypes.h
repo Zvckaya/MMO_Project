@@ -92,7 +92,7 @@ struct CS_STOP              { float curX; float curY; };
 struct SC_MAP_INFO          { uint32_t mapID; };
 
 // [0x020A] CS_MAP_CHANGE_REQ
-struct CS_MAP_CHANGE_REQ    { uint32_t targetMapID; };
+struct CS_MAP_CHANGE_REQ    { uint32_t targetMapID; float spawnX; float spawnY; };
 
 // [0x020B] SC_MAP_CHANGE
 // result: 0=성공 1=존재하지 않는 맵 2=이미 같은 맵

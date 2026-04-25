@@ -1,4 +1,5 @@
 #include "GameServer.h"
+#include "Logger.h"
 
 void GameServer::HandlePacket(SessionID sessionID, Packet* packet)
 {
@@ -160,6 +161,8 @@ void GameServer::OnCS_MapChangeReq(SessionID sessionID, Packet* packet)
     EnqueueFrameTask({
         .type        = FrameTaskType::playerMapChange,
         .sessionID   = sessionID,
-        .targetMapID = data.targetMapID
+        .targetMapID = data.targetMapID,
+        .spawnX      = data.spawnX,
+        .spawnY      = data.spawnY
     });
 }

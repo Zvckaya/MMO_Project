@@ -59,6 +59,8 @@ private:
         uint16_t      skillID = 0;
         MapID         mapID       = DEFAULT_MAP_ID;
         MapID         targetMapID = DEFAULT_MAP_ID;
+        float         spawnX      = 0.f;
+        float         spawnY      = 0.f;
         PlayerDBData  dbData;
         uint16_t      fromSlot = 0;
         uint16_t      toSlot   = 0;

@@ -738,7 +738,8 @@ void GameServer::ProcessFrameTask(const FrameTask& task)
 		// 새 맵에 삽입
 		GameMap* newMap = targetMapIt->second.get();
 		Player* player = playerOwnership.get();
-		player->posX = player->posY = player->destX = player->destY = 0.f;
+		player->posX = player->destX = task.spawnX;
+		player->posY = player->destY = task.spawnY;
 		player->isMoving = false;
 		newMap->AddPlayer(task.sessionID, std::move(playerOwnership));
 		_sessionToMapID[task.sessionID] = task.targetMapID;
@@ -816,11 +817,18 @@ void GameServer::Update(int64_t deltaMs)
 					if (player)
 					{
 						Log(L"STOP", Logger::Level::DEBUG, L"[%llu] client(%.2f, %.2f) server(%.2f, %.2f)", sessionID, jobQueue->pendingStop.curX, jobQueue->pendingStop.curY, player->posX, player->posY);
-						player->posX     = jobQueue->pendingStop.curX;
-						player->posY     = jobQueue->pendingStop.curY;
-						player->destX    = jobQueue->pendingStop.curX;
-						player->destY    = jobQueue->pendingStop.curY;
-						player->isMoving = false;
+						player->posX = jobQueue->pendingStop.curX;
+						player->posY = jobQueue->pendingStop.curY;
+
+						float sdx  = jobQueue->pendingStop.curX - player->destX;
+						float sdy  = jobQueue->pendingStop.curY - player->destY;
+						bool  atDest = (sdx * sdx + sdy * sdy) < 0.1f * 0.1f;
+						if (atDest)
+						{
+							player->destX    = jobQueue->pendingStop.curX;
+							player->destY    = jobQueue->pendingStop.curY;
+							player->isMoving = false;
+						}
 					}
 				}
 				jobQueue->pendingStop.dirty.store(false, std::memory_order_release);
@@ -855,11 +863,37 @@ void GameServer::Update(int64_t deltaMs)
 				continue;
 			}
 
-			player->posX     = jobQueue->pendingMove.curX;
-			player->posY     = jobQueue->pendingMove.curY;
+			{
+				uint64_t now     = ::GetTickCount64();
+				float    elapsed = (player->lastMoveTime > 0)
+				                 ? static_cast<float>(now - player->lastMoveTime) / 1000.f
+				                 : 1.f;
+				float cdx        = jobQueue->pendingMove.curX - player->posX;
+				float cdy        = jobQueue->pendingMove.curY - player->posY;
+				float clientDist = sqrtf(cdx * cdx + cdy * cdy);
+				float maxAllowed = player->speed * elapsed * 1.5f;
+
+				if (clientDist > maxAllowed)
+				{
+					Packet* corr = _packetPool.Alloc();
+					corr->Clear();
+					corr->SetType(PKT_SC_MOVE_CORRECT);
+					corr->WriteStruct(SC_MOVE_CORRECT{ player->posX, player->posY });
+					SendPacket(sessionID, corr);
+					_packetPool.Free(corr);
+				}
+				else
+				{
+					player->posX = jobQueue->pendingMove.curX;
+					player->posY = jobQueue->pendingMove.curY;
+				}
+				player->lastMoveTime = now;
+			}
+
 			player->destX    = jobQueue->pendingMove.destX;
 			player->destY    = jobQueue->pendingMove.destY;
 			player->isMoving = true;
+			// SC_MOVE는 posX/posY 기준으로 전송 — 보정됐으면 서버 위치, 수용됐으면 클라 위치
 
 			Packet* p = _packetPool.Alloc();
 			p->Clear();
