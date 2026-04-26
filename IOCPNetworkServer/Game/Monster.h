@@ -36,6 +36,8 @@ public:
 
     std::vector<std::pair<float, float>> path;
     int pathIndex = 0;
+    int lastKnownTargetGridX = -1;
+    int lastKnownTargetGridY = -1;
 
 private:
     MonsterID _id;

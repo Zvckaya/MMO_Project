@@ -1227,12 +1227,21 @@ void GameServer::UpdateMonsterFSM(GameMap* map, Monster* monster, float dt)
 
 		monster->pathRecalcTimer -= dt;
 		bool exhausted = monster->pathIndex >= static_cast<int>(monster->path.size());
-		if (monster->pathRecalcTimer <= 0.f || exhausted)
+		int tgx = static_cast<int>(target->posX / TILE_SIZE);
+		int tgy = static_cast<int>(target->posY / TILE_SIZE);
+		bool targetMoved = (tgx != monster->lastKnownTargetGridX || tgy != monster->lastKnownTargetGridY);
+		if (exhausted || (monster->pathRecalcTimer <= 0.f && targetMoved))
 		{
+			monster->lastKnownTargetGridX = tgx;
+			monster->lastKnownTargetGridY = tgy;
 			RecalcMonsterPath(monster, target, gridMap);
 			monster->pathRecalcTimer = MONSTER_PATH_RECALC_SEC;
 			monster->isMoving = !monster->path.empty();
 			BroadcastNpcMove(map, monster);
+		}
+		else if (monster->pathRecalcTimer <= 0.f)
+		{
+			monster->pathRecalcTimer = MONSTER_PATH_RECALC_SEC;
 		}
 
 		if (advancePath() && monster->pathIndex < static_cast<int>(monster->path.size()))
