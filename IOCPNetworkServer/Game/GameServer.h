@@ -115,6 +115,38 @@ private:
     void     RecalcMonsterPathToSpawn(Monster* monster, const GridMap* gridMap);
     void     BroadcastNpcMove(GameMap* map, const Monster* monster);
     void     UpdateMonsterFSM(GameMap* map, Monster* monster, float dt);
+    void     HandlePlayerAuth(const FrameTask& task);
+
+    template<typename T>
+    void SendTo(SessionID id, uint16_t type, const T& payload)
+    {
+        Packet* p = _packetPool.Alloc();
+        p->Clear();
+        p->SetType(type);
+        p->WriteStruct(payload);
+        SendPacket(id, p);
+        _packetPool.Free(p);
+    }
+
+    void SendTo(SessionID id, uint16_t type)
+    {
+        Packet* p = _packetPool.Alloc();
+        p->Clear();
+        p->SetType(type);
+        SendPacket(id, p);
+        _packetPool.Free(p);
+    }
+
+    template<typename T>
+    void BroadcastTo(MapID mapID, uint16_t type, const T& payload)
+    {
+        Packet* p = _packetPool.Alloc();
+        p->Clear();
+        p->SetType(type);
+        p->WriteStruct(payload);
+        BroadcastAll(mapID, p);
+        _packetPool.Free(p);
+    }
 
     std::mutex                  _authQueueMutex;
     std::condition_variable     _authQueueCv;

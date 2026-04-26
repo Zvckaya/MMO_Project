@@ -54,9 +54,7 @@ bool GameServer::Start(std::optional<std::string_view> openIp, uint16_t port,
 	{
 		GameMap* map1 = _maps[1].get();
 		map1->SpawnMonster(++_monsterIDCounter, 1,  30,  20);
-		map1->SpawnMonster(++_monsterIDCounter, 1, 30, 20);
-		map1->SpawnMonster(++_monsterIDCounter, 1, 30, 20);
-		map1->SpawnMonster(++_monsterIDCounter, 1, 30, 20);
+		map1->SpawnMonster(++_monsterIDCounter, 1, 20, 30);
 
 	}
 
@@ -437,109 +435,8 @@ void GameServer::ProcessFrameTask(const FrameTask& task)
 	case FrameTaskType::clientJoin:
 		break;
 	case FrameTaskType::playerAuth:
-	{
-		auto mapIt = _maps.find(task.mapID);
-		if (mapIt == _maps.end()) break;
-		GameMap* map = mapIt->second.get();
-
-		auto newPlayerPtr = std::make_unique<Player>(task.sessionID, task.accountId, task.displayName);
-		Player* newPlayer = newPlayerPtr.get();
-		if (task.dbData.found)
-		{
-			newPlayer->posX = task.dbData.posX;
-			newPlayer->posY = task.dbData.posY;
-			newPlayer->hp   = task.dbData.hp;
-			for (const auto& slot : task.dbData.inventory)
-				if (slot.slotIndex < MAX_INVENTORY_SLOTS)
-					newPlayer->inventory[slot.slotIndex] = { slot.itemID, slot.count };
-		}
-		map->AddPlayer(task.sessionID, std::move(newPlayerPtr));
-		_sessionToMapID[task.sessionID] = task.mapID;
-
-		// 1. 맵 정보
-		{
-			Packet* p = _packetPool.Alloc();
-			p->Clear();
-			p->SetType(PKT_SC_MAP_INFO);
-			p->WriteStruct(SC_MAP_INFO{ task.mapID });
-			SendPacket(task.sessionID, p);
-			_packetPool.Free(p);
-		}
-		// 2. 맵에 있는 월드 아이템 목록
-		for (auto& [uid, worldItem] : map->GetWorldItems())
-		{
-			Packet* p = _packetPool.Alloc();
-			p->Clear();
-			p->SetType(PKT_SC_ITEM_APPEAR);
-			p->WriteStruct(SC_ITEM_APPEAR{ uid, worldItem.itemID, worldItem.posX, worldItem.posY, worldItem.count });
-			SendPacket(task.sessionID, p);
-			_packetPool.Free(p);
-		}
-		// 3. 맵 몬스터 목록
-		for (auto& monster : map->GetMonsters())
-		{
-			Packet* p = _packetPool.Alloc();
-			p->Clear();
-			p->SetType(PKT_SC_NPC_SPAWN);
-			p->WriteStruct(SC_NPC_SPAWN{ monster->GetID(), monster->GetTemplateID(), monster->posX, monster->posY, monster->hp, monster->maxHp });
-			SendPacket(task.sessionID, p);
-			_packetPool.Free(p);
-		}
-		// 4. 인벤토리
-		for (uint16_t i = 0; i < MAX_INVENTORY_SLOTS; ++i)
-		{
-			const auto& slot = newPlayer->inventory[i];
-			if (slot.itemID == 0) continue;
-			Packet* p = _packetPool.Alloc();
-			p->Clear();
-			p->SetType(PKT_SC_INVENTORY_UPD);
-			p->WriteStruct(SC_INVENTORY_UPD{ i, slot.itemID, static_cast<uint16_t>(slot.count) });
-			SendPacket(task.sessionID, p);
-			_packetPool.Free(p);
-		}
-		// 4. 내 캐릭터 정보
-		{
-			Packet* p = _packetPool.Alloc();
-			p->Clear();
-			p->SetType(PKT_SC_CREATE_MY_CHARACTER);
-			p->WriteStruct(SC_CREATE_MY_CHARACTER{ task.sessionID, newPlayer->posX, newPlayer->posY, newPlayer->hp, newPlayer->maxHp, newPlayer->speed, static_cast<uint16_t>(task.displayName.size()) });
-			p->PutData(task.displayName.c_str(), static_cast<int>(task.displayName.size()));
-			SendPacket(task.sessionID, p);
-			_packetPool.Free(p);
-		}
-		// 5. 같은 맵의 기존 플레이어 목록
-		for (auto& [id, player] : map->GetPlayers())
-		{
-			if (id == task.sessionID) continue;
-			const std::string& name = player->GetDisplayName();
-			Packet* p = _packetPool.Alloc();
-			p->Clear();
-			p->SetType(PKT_SC_CREATE_OTHER_CHARACTER);
-			p->WriteStruct(SC_CREATE_OTHER_CHARACTER{ id, player->posX, player->posY, player->hp, player->maxHp, player->speed, static_cast<uint16_t>(name.size()) });
-			p->PutData(name.c_str(), static_cast<int>(name.size()));
-			SendPacket(task.sessionID, p);
-			_packetPool.Free(p);
-		}
-		// 4. 같은 맵의 기존 플레이어들에게 신규 플레이어 알림
-		{
-			Packet* p = _packetPool.Alloc();
-			p->Clear();
-			p->SetType(PKT_SC_CREATE_OTHER_CHARACTER);
-			p->WriteStruct(SC_CREATE_OTHER_CHARACTER{ task.sessionID, newPlayer->posX,newPlayer->posY, newPlayer->hp, newPlayer->maxHp, newPlayer->speed, static_cast<uint16_t>(task.displayName.size()) });
-			p->PutData(task.displayName.c_str(), static_cast<int>(task.displayName.size()));
-			BroadcastExcept(task.mapID, task.sessionID, p);
-			_packetPool.Free(p);
-		}
-		// 5. 스폰 완료
-		{
-			Packet* p = _packetPool.Alloc();
-			p->Clear();
-			p->SetType(PKT_SC_WORLD_ENTER);
-			SendPacket(task.sessionID, p);
-			_packetPool.Free(p);
-		}
+		HandlePlayerAuth(task);
 		break;
-	}
 	case FrameTaskType::clientLeave:
 	{
 		GameMap* map = FindPlayerMap(task.sessionID);
@@ -614,12 +511,17 @@ void GameServer::ProcessFrameTask(const FrameTask& task)
 			if (monster->hp < 0) monster->hp = 0;
 			anyHit = true;
 
-			Packet* p = _packetPool.Alloc();
-			p->Clear();
-			p->SetType(PKT_SC_ATTACK);
-			p->WriteStruct(SC_ATTACK{ task.sessionID, dirX, dirY, monster->GetID(), damage, monster->hp });
-			BroadcastAll(map->GetID(), p);
-			_packetPool.Free(p);
+			BroadcastTo(map->GetID(), PKT_SC_ATTACK, SC_ATTACK{ task.sessionID, dirX, dirY, monster->GetID(), damage, monster->hp });
+
+			if (monster->hp > 0)
+			{
+				monster->target     = task.sessionID;
+				monster->state      = Monster::State::stun;
+				monster->stunTimer  = 1.f;
+				monster->isMoving   = false;
+				monster->path.clear();
+				BroadcastNpcMove(map, monster.get());
+			}
 
 			if (monster->hp == 0)
 			{
@@ -630,24 +532,12 @@ void GameServer::ProcessFrameTask(const FrameTask& task)
 				monster->isMoving     = false;
 				monster->path.clear();
 
-				Packet* dp = _packetPool.Alloc();
-				dp->Clear();
-				dp->SetType(PKT_SC_NPC_DESPAWN);
-				dp->WriteStruct(SC_NPC_DESPAWN{ monster->GetID() });
-				BroadcastAll(map->GetID(), dp);
-				_packetPool.Free(dp);
+				BroadcastTo(map->GetID(), PKT_SC_NPC_DESPAWN, SC_NPC_DESPAWN{ monster->GetID() });
 			}
 		}
 
 		if (!anyHit)
-		{
-			Packet* p = _packetPool.Alloc();
-			p->Clear();
-			p->SetType(PKT_SC_ATTACK);
-			p->WriteStruct(SC_ATTACK{ task.sessionID, dirX, dirY, 0ULL, 0, 0 });
-			BroadcastAll(map->GetID(), p);
-			_packetPool.Free(p);
-		}
+			BroadcastTo(map->GetID(), PKT_SC_ATTACK, SC_ATTACK{ task.sessionID, dirX, dirY, 0ULL, 0, 0 });
 		break;
 	}
 	case FrameTaskType::playerSkill:
@@ -728,7 +618,7 @@ void GameServer::ProcessFrameTask(const FrameTask& task)
 
 		float dx = player->posX - worldItem->posX;
 		float dy = player->posY - worldItem->posY;
-		if (sqrtf(dx * dx + dy * dy) > ITEM_PICKUP_RANGE) break;
+		if (dx * dx + dy * dy > ITEM_PICKUP_RANGE * ITEM_PICKUP_RANGE) break;
 
 		int emptySlot = -1;
 		for (int i = 0; i < MAX_INVENTORY_SLOTS; ++i)
@@ -1047,18 +937,18 @@ const GridMap* GameServer::FindGridMap(MapID id) const
 
 uint64_t GameServer::FindNearestPlayerInAggro(GameMap* map, const Monster* monster, const GridMap* gridMap) const
 {
-	uint64_t nearestID   = 0;
-	float    nearestDist = MONSTER_AGGRO_RANGE;
+	uint64_t nearestID     = 0;
+	float    nearestDistSq = MONSTER_AGGRO_RANGE * MONSTER_AGGRO_RANGE;
 
 	for (auto& [id, player] : map->GetPlayers())
 	{
-		float dx   = player->posX - monster->posX;
-		float dy   = player->posY - monster->posY;
-		float dist = sqrtf(dx * dx + dy * dy);
-		if (dist >= nearestDist) continue;
+		float dx     = player->posX - monster->posX;
+		float dy     = player->posY - monster->posY;
+		float distSq = dx * dx + dy * dy;
+		if (distSq >= nearestDistSq) continue;
 		if (gridMap && !gridMap->HasLOS(monster->posX, monster->posY, player->posX, player->posY)) continue;
-		nearestDist = dist;
-		nearestID   = id;
+		nearestDistSq = distSq;
+		nearestID     = id;
 	}
 	return nearestID;
 }
@@ -1067,23 +957,19 @@ void GameServer::RecalcMonsterPath(Monster* monster, const Player* target, const
 {
 	if (!gridMap) return;
 
-	if (!gridMap->HasLOS(monster->posX, monster->posY, target->posX, target->posY))
-		Log(L"Monster", Logger::Level::DEBUG, L"[%llu] wall detected monster(%.1f,%.1f)->player(%.1f,%.1f) — A* routing",
-			monster->GetID(), monster->posX, monster->posY, target->posX, target->posY);
-
 	AStar::Path newPath;
 	if (AStar::FindPath(*gridMap, monster->posX, monster->posY, target->posX, target->posY, newPath) &&
 		!newPath.empty())
 	{
-		Log(L"Monster", Logger::Level::DEBUG, L"[%llu] A* path found (%zu waypoints) to(%.1f,%.1f)",
-			monster->GetID(), newPath.size(), target->posX, target->posY);
+		if (newPath.size() > 1)
+		{
+			float dx = newPath[0].first  - monster->posX;
+			float dy = newPath[0].second - monster->posY;
+			if (dx * dx + dy * dy < TILE_SIZE * TILE_SIZE)
+				newPath.erase(newPath.begin());
+		}
 		monster->path      = std::move(newPath);
 		monster->pathIndex = 0;
-	}
-	else
-	{
-		Log(L"Monster", Logger::Level::WARN, L"[%llu] A* failed from(%.1f,%.1f) to(%.1f,%.1f)",
-			monster->GetID(), monster->posX, monster->posY, target->posX, target->posY);
 	}
 }
 
@@ -1094,6 +980,13 @@ void GameServer::RecalcMonsterPathToSpawn(Monster* monster, const GridMap* gridM
 	if (AStar::FindPath(*gridMap, monster->posX, monster->posY, monster->GetSpawnX(), monster->GetSpawnY(), newPath) &&
 		!newPath.empty())
 	{
+		if (newPath.size() > 1)
+		{
+			float dx = newPath[0].first  - monster->posX;
+			float dy = newPath[0].second - monster->posY;
+			if (dx * dx + dy * dy < TILE_SIZE * TILE_SIZE)
+				newPath.erase(newPath.begin());
+		}
 		monster->path      = std::move(newPath);
 		monster->pathIndex = 0;
 	}
@@ -1140,12 +1033,7 @@ void GameServer::UpdateMonsterFSM(GameMap* map, Monster* monster, float dt)
 			monster->isMoving = false;
 			monster->path.clear();
 
-			Packet* p = _packetPool.Alloc();
-			p->Clear();
-			p->SetType(PKT_SC_NPC_SPAWN);
-			p->WriteStruct(SC_NPC_SPAWN{ monster->GetID(), monster->GetTemplateID(), monster->posX, monster->posY, monster->hp, monster->maxHp });
-			BroadcastAll(map->GetID(), p);
-			_packetPool.Free(p);
+			BroadcastTo(map->GetID(), PKT_SC_NPC_SPAWN, SC_NPC_SPAWN{ monster->GetID(), monster->GetTemplateID(), monster->posX, monster->posY, monster->hp, monster->maxHp });
 		}
 		return;
 	}
@@ -1194,29 +1082,33 @@ void GameServer::UpdateMonsterFSM(GameMap* map, Monster* monster, float dt)
 		if (!target)
 		{
 			monster->state = Monster::State::returnToSpawn;
+			monster->target = 0;
 			RecalcMonsterPathToSpawn(monster, gridMap);
 			monster->isMoving = true;
 			BroadcastNpcMove(map, monster);
 			break;
 		}
 
-		float dx            = target->posX - monster->posX;
-		float dy            = target->posY - monster->posY;
-		float distToTarget  = sqrtf(dx * dx + dy * dy);
-		float sdx           = monster->posX - monster->GetSpawnX();
-		float sdy           = monster->posY - monster->GetSpawnY();
-		float distFromSpawn = sqrtf(sdx * sdx + sdy * sdy);
+		float dx              = target->posX - monster->posX;
+		float dy              = target->posY - monster->posY;
+		float distToTargetSq  = dx * dx + dy * dy;
+		float sdx             = monster->posX - monster->GetSpawnX();
+		float sdy             = monster->posY - monster->GetSpawnY();
+		float distFromSpawnSq = sdx * sdx + sdy * sdy;
 
-		if (distFromSpawn > MONSTER_LEASH_RANGE)
+		if (distFromSpawnSq > MONSTER_LEASH_RANGE * MONSTER_LEASH_RANGE || distToTargetSq > MONSTER_AGGRO_RANGE * MONSTER_AGGRO_RANGE)
 		{
-			monster->state = Monster::State::returnToSpawn;
+			Log(L"Monster", Logger::Level::DEBUG, L"[%llu] target lost — returning to spawn (%.1f,%.1f)",
+				monster->GetID(), monster->GetSpawnX(), monster->GetSpawnY());
+			monster->state    = Monster::State::returnToSpawn;
+			monster->target   = 0;
 			RecalcMonsterPathToSpawn(monster, gridMap);
 			monster->isMoving = true;
 			BroadcastNpcMove(map, monster);
 			break;
 		}
 
-		if (distToTarget <= MONSTER_ATTACK_RANGE)
+		if (distToTargetSq <= MONSTER_ATTACK_RANGE * MONSTER_ATTACK_RANGE)
 		{
 			monster->state        = Monster::State::attack;
 			monster->attackCooldown = 0.f;
@@ -1253,6 +1145,8 @@ void GameServer::UpdateMonsterFSM(GameMap* map, Monster* monster, float dt)
 		Player* target = map->FindPlayer(monster->target);
 		if (!target)
 		{
+			Log(L"Monster", Logger::Level::DEBUG, L"[%llu] target lost — returning to spawn (%.1f,%.1f)",
+				monster->GetID(), monster->GetSpawnX(), monster->GetSpawnY());
 			monster->state = Monster::State::returnToSpawn;
 			RecalcMonsterPathToSpawn(monster, gridMap);
 			monster->isMoving = true;
@@ -1260,11 +1154,11 @@ void GameServer::UpdateMonsterFSM(GameMap* map, Monster* monster, float dt)
 			break;
 		}
 
-		float dx           = target->posX - monster->posX;
-		float dy           = target->posY - monster->posY;
-		float distToTarget = sqrtf(dx * dx + dy * dy);
+		float dx             = target->posX - monster->posX;
+		float dy             = target->posY - monster->posY;
+		float distToTargetSq = dx * dx + dy * dy;
 
-		if (distToTarget > MONSTER_ATTACK_RANGE)
+		if (distToTargetSq > MONSTER_ATTACK_RANGE * MONSTER_ATTACK_RANGE)
 		{
 			monster->state           = Monster::State::chase;
 			monster->pathRecalcTimer = 0.f;
@@ -1282,12 +1176,25 @@ void GameServer::UpdateMonsterFSM(GameMap* map, Monster* monster, float dt)
 			target->hp -= monsterDamage;
 			if (target->hp < 0) target->hp = 0;
 
-			Packet* p = _packetPool.Alloc();
-			p->Clear();
-			p->SetType(PKT_SC_NPC_ATTACK);
-			p->WriteStruct(SC_NPC_ATTACK{ monster->GetID(), monster->target, monsterDamage, target->hp });
-			BroadcastAll(map->GetID(), p);
-			_packetPool.Free(p);
+			BroadcastTo(map->GetID(), PKT_SC_NPC_ATTACK, SC_NPC_ATTACK{ monster->GetID(), monster->target, monsterDamage, target->hp });
+		}
+		break;
+	}
+	case Monster::State::stun:
+	{
+		monster->stunTimer -= dt;
+		if (monster->stunTimer <= 0.f)
+		{
+			if (monster->target != 0 && map->FindPlayer(monster->target))
+			{
+				monster->state           = Monster::State::chase;
+				monster->pathRecalcTimer = 0.f;
+			}
+			else
+			{
+				monster->target = 0;
+				monster->state  = Monster::State::idle;
+			}
 		}
 		break;
 	}
@@ -1311,4 +1218,75 @@ void GameServer::UpdateMonsterFSM(GameMap* map, Monster* monster, float dt)
 		break;
 	}
 	}
+}
+
+void GameServer::HandlePlayerAuth(const FrameTask& task)
+{
+	auto mapIt = _maps.find(task.mapID);
+	if (mapIt == _maps.end()) return;
+	GameMap* map = mapIt->second.get();
+
+	auto newPlayerPtr = std::make_unique<Player>(task.sessionID, task.accountId, task.displayName);
+	Player* newPlayer = newPlayerPtr.get();
+	if (task.dbData.found)
+	{
+		newPlayer->posX = task.dbData.posX;
+		newPlayer->posY = task.dbData.posY;
+		newPlayer->hp   = task.dbData.hp;
+		for (const auto& slot : task.dbData.inventory)
+			if (slot.slotIndex < MAX_INVENTORY_SLOTS)
+				newPlayer->inventory[slot.slotIndex] = { slot.itemID, slot.count };
+	}
+	map->AddPlayer(task.sessionID, std::move(newPlayerPtr));
+	_sessionToMapID[task.sessionID] = task.mapID;
+
+	SendTo(task.sessionID, PKT_SC_MAP_INFO, SC_MAP_INFO{ task.mapID });
+
+	for (auto& [uid, worldItem] : map->GetWorldItems())
+		SendTo(task.sessionID, PKT_SC_ITEM_APPEAR, SC_ITEM_APPEAR{ uid, worldItem.itemID, worldItem.posX, worldItem.posY, worldItem.count });
+
+	for (auto& monster : map->GetMonsters())
+		SendTo(task.sessionID, PKT_SC_NPC_SPAWN, SC_NPC_SPAWN{ monster->GetID(), monster->GetTemplateID(), monster->posX, monster->posY, monster->hp, monster->maxHp });
+
+	for (uint16_t i = 0; i < MAX_INVENTORY_SLOTS; ++i)
+	{
+		const auto& slot = newPlayer->inventory[i];
+		if (slot.itemID == 0) continue;
+		SendTo(task.sessionID, PKT_SC_INVENTORY_UPD, SC_INVENTORY_UPD{ i, slot.itemID, static_cast<uint16_t>(slot.count) });
+	}
+
+	{
+		Packet* p = _packetPool.Alloc();
+		p->Clear();
+		p->SetType(PKT_SC_CREATE_MY_CHARACTER);
+		p->WriteStruct(SC_CREATE_MY_CHARACTER{ task.sessionID, newPlayer->posX, newPlayer->posY, newPlayer->hp, newPlayer->maxHp, newPlayer->speed, static_cast<uint16_t>(task.displayName.size()) });
+		p->PutData(task.displayName.c_str(), static_cast<int>(task.displayName.size()));
+		SendPacket(task.sessionID, p);
+		_packetPool.Free(p);
+	}
+
+	for (auto& [id, player] : map->GetPlayers())
+	{
+		if (id == task.sessionID) continue;
+		const std::string& name = player->GetDisplayName();
+		Packet* p = _packetPool.Alloc();
+		p->Clear();
+		p->SetType(PKT_SC_CREATE_OTHER_CHARACTER);
+		p->WriteStruct(SC_CREATE_OTHER_CHARACTER{ id, player->posX, player->posY, player->hp, player->maxHp, player->speed, static_cast<uint16_t>(name.size()) });
+		p->PutData(name.c_str(), static_cast<int>(name.size()));
+		SendPacket(task.sessionID, p);
+		_packetPool.Free(p);
+	}
+
+	{
+		Packet* p = _packetPool.Alloc();
+		p->Clear();
+		p->SetType(PKT_SC_CREATE_OTHER_CHARACTER);
+		p->WriteStruct(SC_CREATE_OTHER_CHARACTER{ task.sessionID, newPlayer->posX, newPlayer->posY, newPlayer->hp, newPlayer->maxHp, newPlayer->speed, static_cast<uint16_t>(task.displayName.size()) });
+		p->PutData(task.displayName.c_str(), static_cast<int>(task.displayName.size()));
+		BroadcastExcept(task.mapID, task.sessionID, p);
+		_packetPool.Free(p);
+	}
+
+	SendTo(task.sessionID, PKT_SC_WORLD_ENTER);
 }

@@ -9,7 +9,7 @@ using MonsterID = uint64_t;
 class Monster : public Creature
 {
 public:
-    enum class State { idle, chase, attack, returnToSpawn };
+    enum class State { idle, chase, attack, returnToSpawn, stun };
 
     Monster(MonsterID id, uint16_t templateID, float spawnX, float spawnY)
         : _id(id)
@@ -31,6 +31,7 @@ public:
     uint64_t target          = 0;
     float    attackCooldown  = 0.f;
     float    pathRecalcTimer = 0.f;
+    float    stunTimer       = 0.f;
     bool     isDead          = false;
     float    respawnTimer    = 0.f;
 
