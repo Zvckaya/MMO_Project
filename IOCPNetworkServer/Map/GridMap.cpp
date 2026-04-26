@@ -12,12 +12,18 @@ bool GridMap::Load(const std::string& path)
     if (_width <= 0 || _height <= 0) return false;
 
     _tiles.assign(_height, std::vector<uint8_t>(_width, 0));
+    _spawnPoints.clear();
 
     for (int y = 0; y < _height; y++)
         for (int x = 0; x < _width; x++) {
-            int val;
-            file >> val;
-            _tiles[y][x] = static_cast<uint8_t>(val != 0 ? 1 : 0);
+            std::string token;
+            file >> token;
+            if (token == "M") {
+                _tiles[y][x] = 0;
+                _spawnPoints.push_back({ (x + 0.5f) * TILE_SIZE, (y + 0.5f) * TILE_SIZE });
+            } else {
+                _tiles[y][x] = static_cast<uint8_t>(token != "0" ? 1 : 0);
+            }
         }
 
     return true;

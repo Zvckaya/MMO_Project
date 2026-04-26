@@ -52,20 +52,17 @@ bool GameServer::Start(std::optional<std::string_view> openIp, uint16_t port,
 	_maps.emplace(1, std::make_unique<GameMap>(1));
 	_maps.emplace(2, std::make_unique<GameMap>(2));
 
-	{
-		GameMap* map1 = _maps[1].get();
-		map1->SpawnMonster(++_monsterIDCounter, 1,  30,  20);
-		map1->SpawnMonster(++_monsterIDCounter, 1, 20, 30);
-
-	}
-
 	for (auto& [mapID, gameMap] : _maps)
 	{
 		char filename[64];
 		snprintf(filename, sizeof(filename), "maps/map_%03u.txt", mapID);
 		GridMap gm;
 		if (gm.Load(filename))
+		{
 			Log(L"GridMap", Logger::Level::SYSTEM, L"GridMap loaded (%d x %d) for mapID=%u", gm.GetWidth(), gm.GetHeight(), mapID);
+			for (auto& [sx, sy] : gm.GetSpawnPoints())
+				gameMap->SpawnMonster(++_monsterIDCounter, 1, sx, sy);
+		}
 		else
 			Log(L"GridMap", Logger::Level::WARN, L"maps/map_%03u.txt not found — wall check disabled for mapID=%u", mapID, mapID);
 		_gridMaps.emplace(mapID, std::move(gm));

@@ -6,6 +6,7 @@
 #include "Player.h"
 #include "Monster.h"
 #include "ServerConfig.h"
+#include "Logger.h"
 
 struct WorldItem {
     uint64_t itemUID   = 0;
@@ -70,6 +71,7 @@ public:
 
     Monster* SpawnMonster(MonsterID id, uint16_t templateID, float spawnX, float spawnY)
     {
+        Log(L"serverstart", Logger::Level::SYSTEM, L"MonsterSpawn");
         _monsters.push_back(std::make_unique<Monster>(id, templateID, spawnX, spawnY));
         return _monsters.back().get();
     }

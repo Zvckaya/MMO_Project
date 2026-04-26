@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <utility>
 #include <vector>
 #include <cstdint>
 
@@ -16,8 +17,11 @@ public:
     int  GetHeight() const { return _height; }
     bool IsLoaded()  const { return !_tiles.empty(); }
 
+    const std::vector<std::pair<float, float>>& GetSpawnPoints() const { return _spawnPoints; }
+
 private:
-    std::vector<std::vector<uint8_t>> _tiles;
+    std::vector<std::vector<uint8_t>>    _tiles;
+    std::vector<std::pair<float, float>> _spawnPoints;
     int _width  = 0;
     int _height = 0;
 };
