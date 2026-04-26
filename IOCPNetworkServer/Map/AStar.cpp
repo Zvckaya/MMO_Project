@@ -97,6 +97,7 @@ bool AStar::FindPath(const GridMap& grid,
             {
                 if (!grid.IsWalkable(cx + DDX[i], cy) ||
                     !grid.IsWalkable(cx, cy + DDY[i])) continue;
+                if (!grid.HasClearance(nx, ny)) continue;
             }
 
             const int nIdx = toIdx(nx, ny);

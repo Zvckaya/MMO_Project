@@ -4,6 +4,7 @@
 #include "Logger.h"
 #include <chrono>
 #include <cmath>
+#include <random>
 #include <Windows.h>
 
 void GameServer::BroadcastAll(MapID mapID, Packet* packet)
@@ -533,6 +534,12 @@ void GameServer::ProcessFrameTask(const FrameTask& task)
 				monster->path.clear();
 
 				BroadcastTo(map->GetID(), PKT_SC_NPC_DESPAWN, SC_NPC_DESPAWN{ monster->GetID() });
+
+				static thread_local std::mt19937 rng{ std::random_device{}() };
+				constexpr uint16_t dropTable[] = { 2001, 2002, 2003 };
+				uint16_t dropItemID = dropTable[std::uniform_int_distribution<int>(0, 2)(rng)];
+				uint64_t uid = map->SpawnWorldItem(dropItemID, 1, monster->posX, monster->posY);
+				BroadcastTo(map->GetID(), PKT_SC_ITEM_APPEAR, SC_ITEM_APPEAR{ uid, dropItemID, monster->posX, monster->posY, 1 });
 			}
 		}
 
@@ -968,6 +975,14 @@ void GameServer::RecalcMonsterPath(Monster* monster, const Player* target, const
 			if (dx * dx + dy * dy < TILE_SIZE * TILE_SIZE)
 				newPath.erase(newPath.begin());
 		}
+		std::wstring pts;
+		for (auto& [x, y] : newPath)
+		{
+			wchar_t buf[32];
+			swprintf_s(buf, L"(%.1f,%.1f) ", x, y);
+			pts += buf;
+		}
+		Log(L"Monster", Logger::Level::DEBUG, L"[%llu] path(%zu): %s", monster->GetID(), newPath.size(), pts.c_str());
 		monster->path      = std::move(newPath);
 		monster->pathIndex = 0;
 	}
@@ -1134,6 +1149,7 @@ void GameServer::UpdateMonsterFSM(GameMap* map, Monster* monster, float dt)
 		else if (monster->pathRecalcTimer <= 0.f)
 		{
 			monster->pathRecalcTimer = MONSTER_PATH_RECALC_SEC;
+			BroadcastNpcMove(map, monster);
 		}
 
 		if (advancePath() && monster->pathIndex < static_cast<int>(monster->path.size()))
@@ -1211,6 +1227,13 @@ void GameServer::UpdateMonsterFSM(GameMap* map, Monster* monster, float dt)
 			monster->path.clear();
 			BroadcastNpcMove(map, monster);
 			break;
+		}
+
+		monster->pathRecalcTimer -= dt;
+		if (monster->pathRecalcTimer <= 0.f)
+		{
+			monster->pathRecalcTimer = MONSTER_PATH_RECALC_SEC;
+			BroadcastNpcMove(map, monster);
 		}
 
 		if (advancePath() && monster->pathIndex < static_cast<int>(monster->path.size()))

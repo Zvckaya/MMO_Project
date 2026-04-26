@@ -50,6 +50,15 @@ bool GridMap::HasLOS(float ax, float ay, float bx, float by) const
     }
 }
 
+bool GridMap::HasClearance(int gx, int gy) const
+{
+    for (int dy = -1; dy <= 1; dy++)
+        for (int dx = -1; dx <= 1; dx++)
+            if ((dx != 0 || dy != 0) && !IsWalkable(gx + dx, gy + dy))
+                return false;
+    return true;
+}
+
 bool GridMap::IsWalkableWorld(float wx, float wy) const
 {
     if (wx < 0.f || wy < 0.f) return true;

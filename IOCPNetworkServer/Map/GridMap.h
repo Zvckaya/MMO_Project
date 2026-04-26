@@ -9,6 +9,7 @@ public:
 
     bool IsWalkableWorld(float wx, float wy) const;
     bool IsWalkable(int gx, int gy) const;
+    bool HasClearance(int gx, int gy) const;
     bool HasLOS(float ax, float ay, float bx, float by) const;
 
     int  GetWidth()  const { return _width; }
