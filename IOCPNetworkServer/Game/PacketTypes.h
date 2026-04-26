@@ -99,10 +99,12 @@ struct CS_MAP_CHANGE_REQ    { uint32_t targetMapID; float spawnX; float spawnY; 
 struct SC_MAP_CHANGE        { uint32_t mapID; uint8_t result; };
 
 // [0x0301] CS_ATTACK
-struct CS_ATTACK            { uint64_t targetID; };
+// 플레이어가 바라보는 방향 벡터 (정규화)
+struct CS_ATTACK            { float dirX; float dirY; };
 
 // [0x0302] SC_ATTACK
-struct SC_ATTACK            { uint64_t attackerID; uint64_t targetID; int32_t damage; int32_t targetHp; };
+// targetID=0 이면 miss (애니메이션 용도), targetID!=0 이면 피격
+struct SC_ATTACK            { uint64_t attackerID; float dirX; float dirY; uint64_t targetID; int32_t damage; int32_t targetHp; };
 
 // [0x0401] CS_SKILL
 // single-target: targetID 사용 / AoE: targetX,targetY 사용

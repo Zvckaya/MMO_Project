@@ -109,9 +109,10 @@ private:
     void EnqueueDBRequest(DBRequest req);
     void CreateDBThread(std::stop_token stopToken);
 
-    uint64_t FindNearestPlayerInAggro(GameMap* map, const Monster* monster) const;
-    void     RecalcMonsterPath(Monster* monster, const Player* target);
-    void     RecalcMonsterPathToSpawn(Monster* monster);
+    const GridMap* FindGridMap(MapID id) const;
+    uint64_t FindNearestPlayerInAggro(GameMap* map, const Monster* monster, const GridMap* gridMap) const;
+    void     RecalcMonsterPath(Monster* monster, const Player* target, const GridMap* gridMap);
+    void     RecalcMonsterPathToSpawn(Monster* monster, const GridMap* gridMap);
     void     BroadcastNpcMove(GameMap* map, const Monster* monster);
     void     UpdateMonsterFSM(GameMap* map, Monster* monster, float dt);
 
@@ -143,6 +144,6 @@ private:
     std::atomic<bool>     _isGameRunning     = false;
     std::atomic<uint64_t> _monsterIDCounter  = 0;
 
-    GridMap _gridMap;
+    std::unordered_map<MapID, GridMap> _gridMaps;
 };
 

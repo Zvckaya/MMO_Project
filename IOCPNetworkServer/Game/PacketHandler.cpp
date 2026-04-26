@@ -92,12 +92,13 @@ void GameServer::OnCS_Stop(SessionID sessionID, Packet* packet)
 void GameServer::OnCS_Attack(SessionID sessionID, Packet* packet)
 {
     CS_ATTACK data;
-    packet->ReadStruct(data);
+    if (!packet->ReadStruct(data)) return;
 
     EnqueueFrameTask({
-        .type = FrameTaskType::playerAttack,
+        .type      = FrameTaskType::playerAttack,
         .sessionID = sessionID,
-        .targetID = data.targetID
+        .curX      = data.dirX,
+        .curY      = data.dirY
     });
 }
 

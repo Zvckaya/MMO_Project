@@ -53,17 +53,24 @@ bool GameServer::Start(std::optional<std::string_view> openIp, uint16_t port,
 
 	{
 		GameMap* map1 = _maps[1].get();
-		map1->SpawnMonster(++_monsterIDCounter, 1,  5.5f,  4.5f);
-		map1->SpawnMonster(++_monsterIDCounter, 1, 25.0f,  5.0f);
-		map1->SpawnMonster(++_monsterIDCounter, 1,  6.0f, 12.0f);
-		map1->SpawnMonster(++_monsterIDCounter, 1, 20.0f, 10.0f);
-		map1->SpawnMonster(++_monsterIDCounter, 1, 14.0f, 20.0f);
+		map1->SpawnMonster(++_monsterIDCounter, 1,  30,  20);
+		map1->SpawnMonster(++_monsterIDCounter, 1, 30, 20);
+		map1->SpawnMonster(++_monsterIDCounter, 1, 30, 20);
+		map1->SpawnMonster(++_monsterIDCounter, 1, 30, 20);
+
 	}
 
-	if (_gridMap.Load("maps/map_001.txt"))
-		Log(L"GridMap", Logger::Level::SYSTEM, L"GridMap loaded (%d x %d)", _gridMap.GetWidth(), _gridMap.GetHeight());
-	else
-		Log(L"GridMap", Logger::Level::WARN, L"maps/map_001.txt not found — wall check disabled");
+	for (auto& [mapID, gameMap] : _maps)
+	{
+		char filename[64];
+		snprintf(filename, sizeof(filename), "maps/map_%03u.txt", mapID);
+		GridMap gm;
+		if (gm.Load(filename))
+			Log(L"GridMap", Logger::Level::SYSTEM, L"GridMap loaded (%d x %d) for mapID=%u", gm.GetWidth(), gm.GetHeight(), mapID);
+		else
+			Log(L"GridMap", Logger::Level::WARN, L"maps/map_%03u.txt not found — wall check disabled for mapID=%u", mapID, mapID);
+		_gridMaps.emplace(mapID, std::move(gm));
+	}
 
 	{
 		DBClient db;
@@ -581,39 +588,65 @@ void GameServer::ProcessFrameTask(const FrameTask& task)
 		Player* attacker = map->FindPlayer(task.sessionID);
 		if (!attacker) break;
 
-		Monster* monsterTarget = map->FindMonster(task.targetID);
-		if (!monsterTarget || monsterTarget->isDead) break;
-
-		float dx = attacker->posX - monsterTarget->posX;
-		float dy = attacker->posY - monsterTarget->posY;
-		if (sqrtf(dx * dx + dy * dy) > ATTACK_RANGE) break;
+		float dirX = task.curX;
+		float dirY = task.curY;
+		float dirLen = sqrtf(dirX * dirX + dirY * dirY);
+		if (dirLen < 0.001f) break;
+		dirX /= dirLen;
+		dirY /= dirLen;
 
 		constexpr int32_t damage = 10;
-		monsterTarget->hp -= damage;
-		if (monsterTarget->hp < 0) monsterTarget->hp = 0;
+		bool anyHit = false;
 
-		Packet* p = _packetPool.Alloc();
-		p->Clear();
-		p->SetType(PKT_SC_ATTACK);
-		p->WriteStruct(SC_ATTACK{ task.sessionID, task.targetID, damage, monsterTarget->hp });
-		BroadcastAll(map->GetID(), p);
-		_packetPool.Free(p);
-
-		if (monsterTarget->hp == 0)
+		for (auto& monster : map->GetMonsters())
 		{
-			monsterTarget->isDead       = true;
-			monsterTarget->respawnTimer = MONSTER_RESPAWN_SEC;
-			monsterTarget->state        = Monster::State::idle;
-			monsterTarget->target       = 0;
-			monsterTarget->isMoving     = false;
-			monsterTarget->path.clear();
+			if (monster->isDead) continue;
 
-			Packet* dp = _packetPool.Alloc();
-			dp->Clear();
-			dp->SetType(PKT_SC_NPC_DESPAWN);
-			dp->WriteStruct(SC_NPC_DESPAWN{ monsterTarget->GetID() });
-			BroadcastAll(map->GetID(), dp);
-			_packetPool.Free(dp);
+			float dx   = monster->posX - attacker->posX;
+			float dy   = monster->posY - attacker->posY;
+			float dist = sqrtf(dx * dx + dy * dy);
+			if (dist > ATTACK_RANGE) continue;
+
+			float dot = (dist > 0.001f) ? (dx / dist * dirX + dy / dist * dirY) : 1.f;
+			if (dot < ATTACK_CONE_COS) continue;
+
+			monster->hp -= damage;
+			if (monster->hp < 0) monster->hp = 0;
+			anyHit = true;
+
+			Packet* p = _packetPool.Alloc();
+			p->Clear();
+			p->SetType(PKT_SC_ATTACK);
+			p->WriteStruct(SC_ATTACK{ task.sessionID, dirX, dirY, monster->GetID(), damage, monster->hp });
+			BroadcastAll(map->GetID(), p);
+			_packetPool.Free(p);
+
+			if (monster->hp == 0)
+			{
+				monster->isDead       = true;
+				monster->respawnTimer = MONSTER_RESPAWN_SEC;
+				monster->state        = Monster::State::idle;
+				monster->target       = 0;
+				monster->isMoving     = false;
+				monster->path.clear();
+
+				Packet* dp = _packetPool.Alloc();
+				dp->Clear();
+				dp->SetType(PKT_SC_NPC_DESPAWN);
+				dp->WriteStruct(SC_NPC_DESPAWN{ monster->GetID() });
+				BroadcastAll(map->GetID(), dp);
+				_packetPool.Free(dp);
+			}
+		}
+
+		if (!anyHit)
+		{
+			Packet* p = _packetPool.Alloc();
+			p->Clear();
+			p->SetType(PKT_SC_ATTACK);
+			p->WriteStruct(SC_ATTACK{ task.sessionID, dirX, dirY, 0ULL, 0, 0 });
+			BroadcastAll(map->GetID(), p);
+			_packetPool.Free(p);
 		}
 		break;
 	}
@@ -865,7 +898,6 @@ void GameServer::Update(int64_t deltaMs)
 					Player* player = map->FindPlayer(sessionID);
 					if (player)
 					{
-						Log(L"STOP", Logger::Level::DEBUG, L"[%llu] client(%.2f, %.2f) server(%.2f, %.2f)", sessionID, jobQueue->pendingStop.curX, jobQueue->pendingStop.curY, player->posX, player->posY);
 						player->posX = jobQueue->pendingStop.curX;
 						player->posY = jobQueue->pendingStop.curY;
 
@@ -901,7 +933,9 @@ void GameServer::Update(int64_t deltaMs)
 
 			jobQueue->pendingMove.dirty.store(false, std::memory_order_release);
 
-			if (_gridMap.IsLoaded() && !_gridMap.IsWalkableWorld(jobQueue->pendingMove.destX, jobQueue->pendingMove.destY))
+			const GridMap* gridMap = map ? FindGridMap(map->GetID()) : nullptr;
+			if (gridMap && (!gridMap->IsWalkableWorld(jobQueue->pendingMove.destX, jobQueue->pendingMove.destY) ||
+				!gridMap->HasLOS(player->posX, player->posY, jobQueue->pendingMove.destX, jobQueue->pendingMove.destY)))
 			{
 				Packet* corr = _packetPool.Alloc();
 				corr->Clear();
@@ -1005,7 +1039,13 @@ void GameServer::Update(int64_t deltaMs)
 	}
 }
 
-uint64_t GameServer::FindNearestPlayerInAggro(GameMap* map, const Monster* monster) const
+const GridMap* GameServer::FindGridMap(MapID id) const
+{
+	auto it = _gridMaps.find(id);
+	return (it != _gridMaps.end() && it->second.IsLoaded()) ? &it->second : nullptr;
+}
+
+uint64_t GameServer::FindNearestPlayerInAggro(GameMap* map, const Monster* monster, const GridMap* gridMap) const
 {
 	uint64_t nearestID   = 0;
 	float    nearestDist = MONSTER_AGGRO_RANGE;
@@ -1016,35 +1056,42 @@ uint64_t GameServer::FindNearestPlayerInAggro(GameMap* map, const Monster* monst
 		float dy   = player->posY - monster->posY;
 		float dist = sqrtf(dx * dx + dy * dy);
 		if (dist >= nearestDist) continue;
-		if (_gridMap.IsLoaded() && !_gridMap.HasLOS(monster->posX, monster->posY, player->posX, player->posY)) continue;
+		if (gridMap && !gridMap->HasLOS(monster->posX, monster->posY, player->posX, player->posY)) continue;
 		nearestDist = dist;
 		nearestID   = id;
 	}
 	return nearestID;
 }
 
-void GameServer::RecalcMonsterPath(Monster* monster, const Player* target)
+void GameServer::RecalcMonsterPath(Monster* monster, const Player* target, const GridMap* gridMap)
 {
+	if (!gridMap) return;
+
+	if (!gridMap->HasLOS(monster->posX, monster->posY, target->posX, target->posY))
+		Log(L"Monster", Logger::Level::DEBUG, L"[%llu] wall detected monster(%.1f,%.1f)->player(%.1f,%.1f) — A* routing",
+			monster->GetID(), monster->posX, monster->posY, target->posX, target->posY);
+
 	AStar::Path newPath;
-	if (_gridMap.IsLoaded() &&
-		AStar::FindPath(_gridMap, monster->posX, monster->posY, target->posX, target->posY, newPath) &&
+	if (AStar::FindPath(*gridMap, monster->posX, monster->posY, target->posX, target->posY, newPath) &&
 		!newPath.empty())
 	{
+		Log(L"Monster", Logger::Level::DEBUG, L"[%llu] A* path found (%zu waypoints) to(%.1f,%.1f)",
+			monster->GetID(), newPath.size(), target->posX, target->posY);
 		monster->path      = std::move(newPath);
 		monster->pathIndex = 0;
 	}
 	else
 	{
-		monster->path      = {{ target->posX, target->posY }};
-		monster->pathIndex = 0;
+		Log(L"Monster", Logger::Level::WARN, L"[%llu] A* failed from(%.1f,%.1f) to(%.1f,%.1f)",
+			monster->GetID(), monster->posX, monster->posY, target->posX, target->posY);
 	}
 }
 
-void GameServer::RecalcMonsterPathToSpawn(Monster* monster)
+void GameServer::RecalcMonsterPathToSpawn(Monster* monster, const GridMap* gridMap)
 {
+	if (!gridMap) return;
 	AStar::Path newPath;
-	if (_gridMap.IsLoaded() &&
-		AStar::FindPath(_gridMap, monster->posX, monster->posY, monster->GetSpawnX(), monster->GetSpawnY(), newPath) &&
+	if (AStar::FindPath(*gridMap, monster->posX, monster->posY, monster->GetSpawnX(), monster->GetSpawnY(), newPath) &&
 		!newPath.empty())
 	{
 		monster->path      = std::move(newPath);
@@ -1052,7 +1099,7 @@ void GameServer::RecalcMonsterPathToSpawn(Monster* monster)
 	}
 	else
 	{
-		monster->path      = {{ monster->GetSpawnX(), monster->GetSpawnY() }};
+		monster->path.clear();
 		monster->pathIndex = 0;
 	}
 }
@@ -1077,6 +1124,8 @@ void GameServer::BroadcastNpcMove(GameMap* map, const Monster* monster)
 
 void GameServer::UpdateMonsterFSM(GameMap* map, Monster* monster, float dt)
 {
+	const GridMap* gridMap = FindGridMap(map->GetID());
+
 	if (monster->isDead)
 	{
 		monster->respawnTimer -= dt;
@@ -1126,7 +1175,7 @@ void GameServer::UpdateMonsterFSM(GameMap* map, Monster* monster, float dt)
 	{
 	case Monster::State::idle:
 	{
-		uint64_t targetID = FindNearestPlayerInAggro(map, monster);
+		uint64_t targetID = FindNearestPlayerInAggro(map, monster, gridMap);
 		if (targetID == 0) break;
 		Player* target = map->FindPlayer(targetID);
 		if (!target) break;
@@ -1134,7 +1183,7 @@ void GameServer::UpdateMonsterFSM(GameMap* map, Monster* monster, float dt)
 		monster->target = targetID;
 		monster->state  = Monster::State::chase;
 		monster->pathRecalcTimer = 0.f;
-		RecalcMonsterPath(monster, target);
+		RecalcMonsterPath(monster, target, gridMap);
 		monster->isMoving = !monster->path.empty();
 		BroadcastNpcMove(map, monster);
 		break;
@@ -1145,7 +1194,7 @@ void GameServer::UpdateMonsterFSM(GameMap* map, Monster* monster, float dt)
 		if (!target)
 		{
 			monster->state = Monster::State::returnToSpawn;
-			RecalcMonsterPathToSpawn(monster);
+			RecalcMonsterPathToSpawn(monster, gridMap);
 			monster->isMoving = true;
 			BroadcastNpcMove(map, monster);
 			break;
@@ -1161,7 +1210,7 @@ void GameServer::UpdateMonsterFSM(GameMap* map, Monster* monster, float dt)
 		if (distFromSpawn > MONSTER_LEASH_RANGE)
 		{
 			monster->state = Monster::State::returnToSpawn;
-			RecalcMonsterPathToSpawn(monster);
+			RecalcMonsterPathToSpawn(monster, gridMap);
 			monster->isMoving = true;
 			BroadcastNpcMove(map, monster);
 			break;
@@ -1180,7 +1229,7 @@ void GameServer::UpdateMonsterFSM(GameMap* map, Monster* monster, float dt)
 		bool exhausted = monster->pathIndex >= static_cast<int>(monster->path.size());
 		if (monster->pathRecalcTimer <= 0.f || exhausted)
 		{
-			RecalcMonsterPath(monster, target);
+			RecalcMonsterPath(monster, target, gridMap);
 			monster->pathRecalcTimer = MONSTER_PATH_RECALC_SEC;
 			monster->isMoving = !monster->path.empty();
 			BroadcastNpcMove(map, monster);
@@ -1196,7 +1245,7 @@ void GameServer::UpdateMonsterFSM(GameMap* map, Monster* monster, float dt)
 		if (!target)
 		{
 			monster->state = Monster::State::returnToSpawn;
-			RecalcMonsterPathToSpawn(monster);
+			RecalcMonsterPathToSpawn(monster, gridMap);
 			monster->isMoving = true;
 			BroadcastNpcMove(map, monster);
 			break;
@@ -1208,8 +1257,11 @@ void GameServer::UpdateMonsterFSM(GameMap* map, Monster* monster, float dt)
 
 		if (distToTarget > MONSTER_ATTACK_RANGE)
 		{
-			monster->state = Monster::State::chase;
+			monster->state           = Monster::State::chase;
 			monster->pathRecalcTimer = 0.f;
+			RecalcMonsterPath(monster, target, gridMap);
+			monster->isMoving = !monster->path.empty();
+			BroadcastNpcMove(map, monster);
 			break;
 		}
 
