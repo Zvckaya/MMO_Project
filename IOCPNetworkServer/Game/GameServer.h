@@ -9,7 +9,6 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 #include "IOCPServer.h"
@@ -148,6 +147,8 @@ private:
         _packetPool.Free(p);
     }
 
+    int64_t                     _saveTimer = 0;
+
     std::mutex                  _authQueueMutex;
     std::condition_variable     _authQueueCv;
     std::queue<AuthRequest>     _authPendingQueue;
@@ -165,9 +166,7 @@ private:
     GlobalQueue               _globalQueue;
     std::shared_mutex                                      _jobQueuesMutex;
     std::unordered_map<SessionID, std::shared_ptr<JobQueue>> _sessionJobQueues;
-    std::mutex                                             _unauthMutex;
-    std::unordered_set<SessionID>                          _unauthSessions;
-    std::shared_mutex                                      _authStatesMutex;
+std::shared_mutex                                      _authStatesMutex;
     std::unordered_map<SessionID, SessionAuthState>        _sessionAuthStates;
     std::unordered_map<MapID, std::unique_ptr<GameMap>>         _maps;
     std::unordered_map<SessionID, MapID>                        _sessionToMapID;

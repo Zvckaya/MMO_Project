@@ -25,6 +25,7 @@ public:
     const std::string& GetDisplayName() const { return _displayName; }
 
     uint64_t lastMoveTime = 0;
+    bool     isDirty      = false;
     std::array<InventorySlot, MAX_INVENTORY_SLOTS> inventory{};
 
 private:

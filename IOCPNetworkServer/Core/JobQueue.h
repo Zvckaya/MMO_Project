@@ -29,8 +29,9 @@ public:
     void Post(std::function<void()> callback);
     void Execute(uint64_t endTick);
 
-    PendingMove       pendingMove;
-    PendingStop       pendingStop;
+    PendingMove        pendingMove;
+    PendingStop        pendingStop;
+    std::atomic<bool>  isAuthenticated{ false };
 
 private:
     void Push(std::shared_ptr<Job> job);

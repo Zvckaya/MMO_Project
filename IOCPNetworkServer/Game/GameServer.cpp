@@ -52,15 +52,15 @@ bool GameServer::Start(std::optional<std::string_view> openIp, uint16_t port,
 	_maps.emplace(1, std::make_unique<GameMap>(1));
 	_maps.emplace(2, std::make_unique<GameMap>(2));
 
-	for (auto& [mapID, gameMap] : _maps)
+	//맵 데이터 파일을 순회
+	for (auto& [mapID, gameMap] : _maps) 
 	{
 		char filename[64];
-		snprintf(filename, sizeof(filename), "maps/map_%03u.txt", mapID);
+		snprintf(filename, sizeof(filename), "maps/map_%03u.txt", mapID); 
 		GridMap gm;
-		if (gm.Load(filename))
+		if (gm.Load(filename)) //Load안에서 맵 데이터를 읽어 spawnpoint 추가 
 		{
-			Log(L"GridMap", Logger::Level::SYSTEM, L"GridMap loaded (%d x %d) for mapID=%u", gm.GetWidth(), gm.GetHeight(), mapID);
-			for (auto& [sx, sy] : gm.GetSpawnPoints())
+			for (auto& [sx, sy] : gm.GetSpawnPoints()) //스폰 포인트에서 몬스터 생성 
 				gameMap->SpawnMonster(++_monsterIDCounter, 1, sx, sy);
 		}
 		else
@@ -129,10 +129,6 @@ void GameServer::Stop()
 	}
 
 	{
-		std::lock_guard lock(_unauthMutex);
-		_unauthSessions.clear();
-	}
-	{
 		std::unique_lock lock(_authStatesMutex);
 		_sessionAuthStates.clear();
 	}
@@ -164,10 +160,6 @@ void GameServer::OnClientJoin(SessionID sessionID)
 		std::unique_lock lock(_jobQueuesMutex);
 		_sessionJobQueues[sessionID] = std::move(jobQueue);
 	}
-	{
-		std::lock_guard lock(_unauthMutex);
-		_unauthSessions.insert(sessionID);
-	}
 }
 
 void GameServer::OnClientLeave(SessionID sessionID)
@@ -177,10 +169,6 @@ void GameServer::OnClientLeave(SessionID sessionID)
 	{
 		std::unique_lock lock(_jobQueuesMutex);
 		_sessionJobQueues.erase(sessionID);
-	}
-	{
-		std::lock_guard lock(_unauthMutex);
-		_unauthSessions.erase(sessionID);
 	}
 	{
 		std::unique_lock lock(_authStatesMutex);
@@ -211,16 +199,13 @@ void GameServer::OnRecv(SessionID sessionID, Packet* packet)
 		jobQueue = it->second;
 	}
 
+	if (!jobQueue->isAuthenticated.load(std::memory_order_acquire) && //미인증 세션 disconnect
+		packet->GetType() != PKT_CS_LOGIN_AUTH)
 	{
-		std::shared_lock lock(_authStatesMutex);
-		bool isAuth = _sessionAuthStates.count(sessionID) > 0;
-		if (!isAuth && packet->GetType() != PKT_CS_LOGIN_AUTH)
-		{
-			_packetPool.Free(packet);
-			ReleaseContentRef(sessionID);
-			Disconnect(sessionID);
-			return;
-		}
+		_packetPool.Free(packet);
+		ReleaseContentRef(sessionID);
+		Disconnect(sessionID);
+		return;
 	}
 
 	jobQueue->Post([this, sessionID, packet]()
@@ -228,7 +213,7 @@ void GameServer::OnRecv(SessionID sessionID, Packet* packet)
 		HandlePacket(sessionID, packet);
 		_packetPool.Free(packet);
 		ReleaseContentRef(sessionID);
-	});
+	}); //정상처리
 }
 
 void GameServer::CreateAuthThread(std::stop_token stopToken)
@@ -263,7 +248,7 @@ void GameServer::ProcessAuthResult(SessionID sessionID, const AuthResult& auth)
 		jobQueue = it->second;
 	}
 
-	jobQueue->Post([this, sessionID, auth]()
+	jobQueue->Post([this, sessionID, auth, jobQueue]()
 	{
 		uint32_t    errorCode   = auth.valid ? AUTH_OK : AUTH_ERR_INVALID;
 		uint64_t    accountId   = auth.valid ? auth.accountId : 0ULL;
@@ -271,10 +256,7 @@ void GameServer::ProcessAuthResult(SessionID sessionID, const AuthResult& auth)
 
 		if (auth.valid)
 		{
-			{
-				std::lock_guard lock(_unauthMutex);
-				_unauthSessions.erase(sessionID);
-			}
+			jobQueue->isAuthenticated.store(true, std::memory_order_release);
 			{
 				std::unique_lock lock(_authStatesMutex);
 				_sessionAuthStates[sessionID] = SessionAuthState{ accountId, displayName };
@@ -295,11 +277,11 @@ void GameServer::ProcessAuthResult(SessionID sessionID, const AuthResult& auth)
 		_packetPool.Free(p);
 
 		if (auth.valid)
-			EnqueueDBRequest({
+			EnqueueDBRequest({ //db에 요청 
 				.type      = DBRequest::Type::loadPlayer,
 				.accountId = accountId,
 				.onLoad    = [this, sessionID, accountId, displayName](const PlayerDBData& dbData)
-				{
+				{ //로드시 완료될 콜백 
 					EnqueueFrameTask({
 						.type        = FrameTaskType::playerAuth,
 						.sessionID   = sessionID,
@@ -556,6 +538,7 @@ void GameServer::ProcessFrameTask(const FrameTask& task)
 		if (task.fromSlot == task.toSlot) break;
 
 		std::swap(player->inventory[task.fromSlot], player->inventory[task.toSlot]);
+		player->isDirty = true;
 
 		auto sendSlot = [&](uint16_t idx)
 		{
@@ -586,6 +569,7 @@ void GameServer::ProcessFrameTask(const FrameTask& task)
 		uint16_t droppedItemID = slot.itemID;
 		int32_t  droppedCount  = slot.count;
 		slot = {};
+		player->isDirty = true;
 
 		Log(L"ITEM_DROP", Logger::Level::DEBUG, L"[%llu] itemID=%u count=%d slot=%u pos(%.2f, %.2f)",
 			task.sessionID, droppedItemID, droppedCount, task.fromSlot, player->posX, player->posY);
@@ -637,6 +621,7 @@ void GameServer::ProcessFrameTask(const FrameTask& task)
 			task.sessionID, uid, pickedItemID, pickedCount, emptySlot, sqrtf(dx * dx + dy * dy));
 
 		player->inventory[emptySlot] = { pickedItemID, pickedCount };
+		player->isDirty = true;
 		map->RemoveWorldItem(uid);
 
 		{
@@ -687,7 +672,7 @@ void GameServer::ProcessFrameTask(const FrameTask& task)
 		std::unique_ptr<Player> playerOwnership;
 		if (oldMap)
 		{
-			playerOwnership = oldMap->TakePlayer(task.sessionID);
+			playerOwnership = oldMap->TakePlayer(task.sessionID); //플레이어 소유권 획득 
 			if (playerOwnership)
 			{
 				Packet* p = _packetPool.Alloc();
@@ -696,7 +681,7 @@ void GameServer::ProcessFrameTask(const FrameTask& task)
 				p->WriteStruct(SC_DESPAWN{ task.sessionID });
 				BroadcastExcept(oldMap->GetID(), task.sessionID, p);
 				_packetPool.Free(p);
-			}
+			} //예전 맵에 플레이어 삭제-> 브로드캐스트 
 		}
 
 		if (!playerOwnership) break;
@@ -709,6 +694,29 @@ void GameServer::ProcessFrameTask(const FrameTask& task)
 		player->isMoving = false;
 		newMap->AddPlayer(task.sessionID, std::move(playerOwnership));
 		_sessionToMapID[task.sessionID] = task.targetMapID;
+
+		{
+			std::vector<InventorySlotData> slots;
+			for (uint16_t i = 0; i < MAX_INVENTORY_SLOTS; ++i)
+			{
+				const auto& slot = player->inventory[i];
+				if (slot.itemID == 0 || slot.count <= 0) continue;
+				slots.push_back({ i, slot.itemID, slot.count });
+			}
+
+			EnqueueDBRequest({
+				.type      = DBRequest::Type::savePlayer,
+				.accountId = player->GetAccountId(),
+				.saveData  = { true, player->posX, player->posY, player->hp, task.targetMapID }
+			});
+
+			EnqueueDBRequest({
+				.type          = DBRequest::Type::saveInventory,
+				.accountId     = player->GetAccountId(),
+				.inventoryData = std::move(slots)
+			});
+			player->isDirty = false;
+		}
 
 		const std::string& name = player->GetDisplayName();
 
@@ -886,6 +894,36 @@ void GameServer::Update(int64_t deltaMs)
 		}
 	}
 
+
+	_saveTimer += deltaMs;
+
+
+	if (_saveTimer >= static_cast<int64_t>(PERIODIC_SAVE_INTERVAL_MS)) 
+	{
+		_saveTimer = 0;
+		for (auto& [mapID, map] : _maps)
+		{
+			for (auto& [sessionID, player] : map->GetPlayers())
+			{
+				if (!player->isDirty) continue; //아이템 변경 x 
+				player->isDirty = false; 
+
+				std::vector<InventorySlotData> slots;
+				for (uint16_t i = 0; i < MAX_INVENTORY_SLOTS; ++i)
+				{
+					const auto& slot = player->inventory[i];
+					if (slot.itemID == 0 || slot.count <= 0) continue;
+					slots.push_back({ i, slot.itemID, slot.count });
+				}
+				EnqueueDBRequest({ //db에 인벤토리 저장 요청 
+					.type          = DBRequest::Type::saveInventory,
+					.accountId     = player->GetAccountId(),
+					.inventoryData = std::move(slots)
+				});
+			}
+		}
+	}
+
 	uint64_t now = ::GetTickCount64();
 	float dt = static_cast<float>(deltaMs) / 1000.f;
 	for (auto& [mapID, map] : _maps)
@@ -942,17 +980,18 @@ const GridMap* GameServer::FindGridMap(MapID id) const
 uint64_t GameServer::FindNearestPlayerInAggro(GameMap* map, const Monster* monster, const GridMap* gridMap) const
 {
 	uint64_t nearestID     = 0;
-	float    nearestDistSq = MONSTER_AGGRO_RANGE * MONSTER_AGGRO_RANGE;
+	float    nearestDistSq = MONSTER_AGGRO_RANGE * MONSTER_AGGRO_RANGE; //인지거리 
 
-	for (auto& [id, player] : map->GetPlayers())
+	for (auto& [id, player] : map->GetPlayers()) //맵 플레이어 순회 
 	{
 		float dx     = player->posX - monster->posX;
 		float dy     = player->posY - monster->posY;
-		float distSq = dx * dx + dy * dy;
+		float distSq = dx * dx + dy * dy; //플레이어와 거리 
 		if (distSq >= nearestDistSq) continue;
+		//Bresenham 알고리즘으로 직선상의 타일 순회하여 벽을 검사 
 		if (gridMap && !gridMap->HasLOS(monster->posX, monster->posY, player->posX, player->posY)) continue;
-		nearestDistSq = distSq;
-		nearestID     = id;
+		nearestDistSq = distSq; 
+		nearestID     = id;// 추적할 플레이어 갱신 
 	}
 	return nearestID;
 }
@@ -1013,7 +1052,7 @@ void GameServer::BroadcastNpcMove(GameMap* map, const Monster* monster)
 {
 	float destX = monster->posX;
 	float destY = monster->posY;
-	if (monster->pathIndex < static_cast<int>(monster->path.size()))
+	if (monster->pathIndex < static_cast<int>(monster->path.size())) 
 	{
 		destX = monster->path[monster->pathIndex].first;
 		destY = monster->path[monster->pathIndex].second;
@@ -1050,6 +1089,7 @@ void GameServer::UpdateMonsterFSM(GameMap* map, Monster* monster, float dt)
 		return;
 	}
 
+	//다음 경로로 도착했는지 확인 
 	auto advancePath = [&]() -> bool
 	{
 		if (monster->pathIndex >= static_cast<int>(monster->path.size())) return false;
@@ -1069,8 +1109,8 @@ void GameServer::UpdateMonsterFSM(GameMap* map, Monster* monster, float dt)
 		monster->posX += pdx / dist * step;
 		monster->posY += pdy / dist * step;
 		return false;
-	};
-
+	}; 
+	 
 	switch (monster->state)
 	{
 	case Monster::State::idle:
@@ -1083,6 +1123,8 @@ void GameServer::UpdateMonsterFSM(GameMap* map, Monster* monster, float dt)
 		monster->target = targetID;
 		monster->state  = Monster::State::chase;
 		monster->pathRecalcTimer = 0.f;
+		monster->lastKnownTargetGridX = static_cast<int>(target->posX / TILE_SIZE);
+		monster->lastKnownTargetGridY = static_cast<int>(target->posY / TILE_SIZE);
 		RecalcMonsterPath(monster, target, gridMap);
 		monster->isMoving = !monster->path.empty();
 		BroadcastNpcMove(map, monster);
@@ -1103,15 +1145,13 @@ void GameServer::UpdateMonsterFSM(GameMap* map, Monster* monster, float dt)
 
 		float dx              = target->posX - monster->posX;
 		float dy              = target->posY - monster->posY;
-		float distToTargetSq  = dx * dx + dy * dy;
+		float distToTargetSq  = dx * dx + dy * dy; //공격 범위 확인 
 		float sdx             = monster->posX - monster->GetSpawnX();
 		float sdy             = monster->posY - monster->GetSpawnY();
-		float distFromSpawnSq = sdx * sdx + sdy * sdy;
+		float distFromSpawnSq = sdx * sdx + sdy * sdy; //스폰 지점까지 거리 확인 
 
 		if (distFromSpawnSq > MONSTER_LEASH_RANGE * MONSTER_LEASH_RANGE || distToTargetSq > MONSTER_AGGRO_RANGE * MONSTER_AGGRO_RANGE)
 		{
-			Log(L"Monster", Logger::Level::DEBUG, L"[%llu] target lost — returning to spawn (%.1f,%.1f)",
-				monster->GetID(), monster->GetSpawnX(), monster->GetSpawnY());
 			monster->state    = Monster::State::returnToSpawn;
 			monster->target   = 0;
 			RecalcMonsterPathToSpawn(monster, gridMap);
@@ -1130,11 +1170,17 @@ void GameServer::UpdateMonsterFSM(GameMap* map, Monster* monster, float dt)
 		}
 
 		monster->pathRecalcTimer -= dt;
+
 		bool exhausted = monster->pathIndex >= static_cast<int>(monster->path.size());
+
+		//타겟의 flaot 좌표를 정규화 
 		int tgx = static_cast<int>(target->posX / TILE_SIZE);
 		int tgy = static_cast<int>(target->posY / TILE_SIZE);
+
+		//타겟이 움직였나?
 		bool targetMoved = (tgx != monster->lastKnownTargetGridX || tgy != monster->lastKnownTargetGridY);
-		if (exhausted || (monster->pathRecalcTimer <= 0.f && targetMoved))
+		//움직였을때만 경로 재탐색 
+		if (exhausted || (monster->pathRecalcTimer <= 0.f && targetMoved)) 
 		{
 			monster->lastKnownTargetGridX = tgx;
 			monster->lastKnownTargetGridY = tgy;
@@ -1143,7 +1189,7 @@ void GameServer::UpdateMonsterFSM(GameMap* map, Monster* monster, float dt)
 			monster->isMoving = !monster->path.empty();
 			BroadcastNpcMove(map, monster);
 		}
-		else if (monster->pathRecalcTimer <= 0.f)
+		else if (monster->pathRecalcTimer <= 0.f) //아니 면 
 		{
 			monster->pathRecalcTimer = MONSTER_PATH_RECALC_SEC;
 			BroadcastNpcMove(map, monster);

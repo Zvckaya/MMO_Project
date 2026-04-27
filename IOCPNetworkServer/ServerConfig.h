@@ -36,3 +36,5 @@ constexpr float MONSTER_ATTACK_COOLDOWN = 5.f;
 constexpr float MONSTER_PATH_RECALC_SEC = 0.5f;
 constexpr float MONSTER_RESPAWN_SEC     = 10.f;
 
+constexpr uint64_t PERIODIC_SAVE_INTERVAL_MS = 300000;
+
