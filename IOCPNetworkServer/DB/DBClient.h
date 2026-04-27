@@ -38,8 +38,6 @@ public:
     void Disconnect();
     bool Ping();
 
-    std::unordered_map<uint16_t, ItemData, std::hash<uint16_t>> LoadItemData();
-
     PlayerDBData LoadPlayer(uint64_t accountId);
     void         SavePlayer(uint64_t accountId, const PlayerDBData& data);
     void         SaveInventory(uint64_t accountId, const std::vector<InventorySlotData>& slots);

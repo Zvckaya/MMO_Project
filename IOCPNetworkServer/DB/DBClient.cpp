@@ -35,35 +35,6 @@ bool DBClient::Ping()
     return _mysql && mysql_ping(_mysql) == 0;
 }
 
-std::unordered_map<uint16_t, ItemData, std::hash<uint16_t>> DBClient::LoadItemData()
-{
-    std::unordered_map<uint16_t, ItemData, std::hash<uint16_t>> result;
-    if (!_mysql) return result;
-
-    if (mysql_query(_mysql, "SELECT item_id, name, type, max_stack FROM item_data"))
-    {
-        Log(L"DB", Logger::Level::ERR, L"LoadItemData failed: %S", mysql_error(_mysql));
-        return result;
-    }
-
-    MYSQL_RES* res = mysql_store_result(_mysql);
-    if (!res) return result;
-
-    while (MYSQL_ROW row = mysql_fetch_row(res))
-    {
-        ItemData item;
-        item.itemID   = static_cast<uint16_t>(atoi(row[0]));
-        item.name     = row[1] ? row[1] : "";
-        item.type     = static_cast<uint8_t>(atoi(row[2]));
-        item.maxStack = atoi(row[3]);
-        result.emplace(item.itemID, std::move(item));
-    }
-
-    mysql_free_result(res);
-    Log(L"DB", Logger::Level::SYSTEM, L"ItemData loaded: %zu items", result.size());
-    return result;
-}
-
 PlayerDBData DBClient::LoadPlayer(uint64_t accountId)
 {
     PlayerDBData result;

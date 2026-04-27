@@ -4,8 +4,41 @@
 #include "Logger.h"
 #include <chrono>
 #include <cmath>
+#include <fstream>
 #include <random>
+#include <sstream>
 #include <Windows.h>
+
+static std::unordered_map<uint16_t, ItemData, std::hash<uint16_t>> LoadItemDataFromFile(const std::string& path)
+{
+	std::unordered_map<uint16_t, ItemData, std::hash<uint16_t>> result;
+	std::ifstream file(path);
+	if (!file.is_open()) return result;
+
+	std::string line;
+	while (std::getline(file, line))
+	{
+		if (line.empty()) continue;
+		std::istringstream ss(line);
+		std::string idStr, name, typeStr, maxStackStr;
+		std::getline(ss, idStr,      '\t');
+		std::getline(ss, name,       '\t');
+		std::getline(ss, typeStr,    '\t');
+		std::getline(ss, maxStackStr);
+		if (idStr.empty() || name.empty() || typeStr.empty() || maxStackStr.empty()) continue;
+		if (!maxStackStr.empty() && maxStackStr.back() == '\r') maxStackStr.pop_back();
+
+		ItemData item;
+		item.itemID   = static_cast<uint16_t>(std::stoul(idStr));
+		item.name     = std::move(name);
+		item.type     = static_cast<uint8_t>(std::stoul(typeStr));
+		item.maxStack = std::stoi(maxStackStr);
+		result.emplace(item.itemID, std::move(item));
+	}
+
+	Log(L"ItemData", Logger::Level::SYSTEM, L"ItemData loaded: %zu items", result.size());
+	return result;
+}
 
 void GameServer::BroadcastAll(MapID mapID, Packet* packet)
 {
@@ -68,11 +101,7 @@ bool GameServer::Start(std::optional<std::string_view> openIp, uint16_t port,
 		_gridMaps.emplace(mapID, std::move(gm));
 	}
 
-	{
-		DBClient db;
-		if (db.Connect(GAME_DB_HOST, GAME_DB_USER, GAME_DB_PASSWORD, GAME_DB_NAME, GAME_DB_PORT))
-			_itemDataMap = db.LoadItemData();
-	}
+	_itemDataMap = LoadItemDataFromFile("data/items.txt");
 
 	_isGameRunning.store(true);
 
