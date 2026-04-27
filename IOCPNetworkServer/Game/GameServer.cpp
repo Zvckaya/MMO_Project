@@ -791,6 +791,9 @@ void GameServer::ProcessFrameTask(const FrameTask& task)
 			SendPacket(task.sessionID, p);
 			_packetPool.Free(p);
 		}
+		// 새 맵 월드 아이템 목록
+		for (auto& [uid, worldItem] : newMap->GetWorldItems())
+			SendTo(task.sessionID, PKT_SC_ITEM_APPEAR, SC_ITEM_APPEAR{ uid, worldItem.itemID, worldItem.posX, worldItem.posY, worldItem.count });
 		// 4. 새 맵 플레이어들에게 입장 알림
 		{
 			Packet* p = _packetPool.Alloc();
