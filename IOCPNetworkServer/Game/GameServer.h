@@ -107,6 +107,7 @@ private:
 
     void EnqueueDBRequest(DBRequest req);
     void CreateDBThread(std::stop_token stopToken);
+    void FlushInventory(Player* player);
 
     const GridMap* FindGridMap(MapID id) const;
     uint64_t FindNearestPlayerInAggro(GameMap* map, const Monster* monster, const GridMap* gridMap) const;

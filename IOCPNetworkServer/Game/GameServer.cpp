@@ -437,6 +437,23 @@ void GameServer::EnqueueFrameTask(FrameTask task)
 	_frameTaskQueue.push(std::move(task));
 }
 
+void GameServer::FlushInventory(Player* player)
+{
+	std::vector<InventorySlotData> slots;
+	for (uint16_t i = 0; i < MAX_INVENTORY_SLOTS; ++i)
+	{
+		const auto& slot = player->inventory[i];
+		if (slot.itemID == 0 || slot.count <= 0) continue;
+		slots.push_back({ i, slot.itemID, slot.count });
+	}
+	EnqueueDBRequest({
+		.type          = DBRequest::Type::saveInventory,
+		.accountId     = player->GetAccountId(),
+		.inventoryData = std::move(slots)
+	});
+	player->isDirty = false;
+}
+
 void GameServer::ProcessFrameTask(const FrameTask& task)
 {
 	switch (task.type)
@@ -598,7 +615,7 @@ void GameServer::ProcessFrameTask(const FrameTask& task)
 		uint16_t droppedItemID = slot.itemID;
 		int32_t  droppedCount  = slot.count;
 		slot = {};
-		player->isDirty = true;
+		FlushInventory(player); //소유권 이전(드롭) - 즉시 저장
 
 		Log(L"ITEM_DROP", Logger::Level::DEBUG, L"[%llu] itemID=%u count=%d slot=%u pos(%.2f, %.2f)",
 			task.sessionID, droppedItemID, droppedCount, task.fromSlot, player->posX, player->posY);
@@ -650,7 +667,7 @@ void GameServer::ProcessFrameTask(const FrameTask& task)
 			task.sessionID, uid, pickedItemID, pickedCount, emptySlot, sqrtf(dx * dx + dy * dy));
 
 		player->inventory[emptySlot] = { pickedItemID, pickedCount };
-		player->isDirty = true;
+		FlushInventory(player); //소유권 이전(획득) - 즉시 저장
 		map->RemoveWorldItem(uid);
 
 		{
